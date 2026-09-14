@@ -19,10 +19,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.galaxia.ui.theme.Cyan70
+import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxIATheme
-import com.example.galaxia.ui.theme.Grey0
-import com.example.galaxia.ui.theme.Grey60
+import com.example.galaxia.ui.theme.GalaxiaCyan
+import com.example.galaxia.ui.theme.GalaxiaGray
 import kotlinx.coroutines.delay
 
 private const val SPLASH_DELAY_MS = 2000L
@@ -43,7 +43,7 @@ fun SplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Grey0),
+            .background(GalaxiaBackground),
         contentAlignment = Alignment.Center
     ) {
 
@@ -53,7 +53,7 @@ fun SplashScreen(
 
             Text(
                 text = "GalaxIA",
-                color = Cyan70,
+                color = GalaxiaCyan,
                 fontSize = 48.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -62,7 +62,7 @@ fun SplashScreen(
 
             Text(
                 text = "O universo, todos os dias, no seu bolso.",
-                color = Grey60,
+                color = GalaxiaGray,
                 fontSize = 16.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 32.dp)
