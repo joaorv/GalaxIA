@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,40 +13,59 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-private val Background = Color(0xFF050609)
-private val CardBackground = Color(0xFF0D0E13)
-private val Cyan = Color(0xFF00B8E6)
-private val White = Color(0xFFF5F5F5)
-private val Gray = Color(0xFF9A9AA2)
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil3.compose.AsyncImage
+import com.example.galaxia.data.model.ApodResponse
+import com.example.galaxia.ui.theme.GalaxiaBackground
+import com.example.galaxia.ui.theme.GalaxiaCardBackground
+import com.example.galaxia.ui.theme.GalaxiaCyan
+import com.example.galaxia.ui.theme.GalaxiaGray
+import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.viewmodel.FeedViewModel
 
 @Composable
-fun FeedScreen() {
+fun FeedScreen(
+    viewModel: FeedViewModel = viewModel(),
+) {
+    val apodState by viewModel.apodState.collectAsState()
+    var selectedTab by remember { mutableIntStateOf(0) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Background)
+            .background(GalaxiaBackground)
     ) {
 
         // Cabeçalho
@@ -64,7 +84,7 @@ fun FeedScreen() {
 
             Text(
                 text = "GalaxIA",
-                color = Cyan,
+                color = GalaxiaCyan,
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -75,57 +95,125 @@ fun FeedScreen() {
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "Pesquisar",
-                    tint = White,
+                    tint = GalaxiaWhite,
                     modifier = Modifier.size(28.dp)
                 )
             }
         }
 
         // Conteúdo
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 20.dp,
-                end = 20.dp,
-                bottom = 20.dp
-            )
-        ) {
-
-            item {
-                FeedCard()
+        Box(modifier = Modifier.weight(1f)) {
+            when (selectedTab) {
+                0 -> {
+                    when (val state = apodState) {
+                        is FeedViewModel.ApodState.Loading -> {
+                            CircularProgressIndicator(
+                                modifier = Modifier.align(Alignment.Center),
+                                color = GalaxiaCyan
+                            )
+                        }
+                        is FeedViewModel.ApodState.Error -> {
+                            Column(
+                                modifier = Modifier.align(Alignment.Center),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = state.message,
+                                    color = Color.Red,
+                                    modifier = Modifier.padding(bottom = 16.dp)
+                                )
+                                Button(
+                                    onClick = { viewModel.fetchApod() },
+                                    colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                    Spacer(Modifier.size(8.dp))
+                                    Text("Tentar Novamente", color = GalaxiaBackground)
+                                }
+                            }
+                        }
+                        is FeedViewModel.ApodState.Success -> {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(
+                                    start = 20.dp,
+                                    end = 20.dp,
+                                    bottom = 20.dp
+                                )
+                            ) {
+                                item {
+                                    FeedCard(state.apod)
+                                }
+                            }
+                        }
+                    }
+                }
+                1 -> {
+                    Text(
+                        text = "Histórico em breve",
+                        color = GalaxiaWhite,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+                2 -> {
+                    Text(
+                        text = "Favoritos em breve",
+                        color = GalaxiaWhite,
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
             }
         }
 
         // Barra inferior
-        BottomNavigation()
+        BottomNavigation(
+            selectedTab = selectedTab,
+            onTabSelected = { selectedTab = it }
+        )
     }
 }
 
 @Composable
-private fun FeedCard() {
+private fun FeedCard(apod: ApodResponse) {
+    var expanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(CardBackground)
+            .background(GalaxiaCardBackground)
+            .clickable { expanded = !expanded }
     ) {
 
-        // Imagem - temporariamente representada por um espaço
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(230.dp)
-                .background(Color.DarkGray)
-        )
+        if (apod.mediaType == "image") {
+            AsyncImage(
+                model = apod.url,
+                contentDescription = apod.title,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(230.dp),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            // Placeholder para vídeos (o APOD às vezes retorna links do YouTube)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(230.dp)
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Vídeo não suportado nesta versão", color = GalaxiaWhite)
+            }
+        }
 
         Column(
             modifier = Modifier.padding(20.dp)
         ) {
 
             Text(
-                text = "A Nebulosa de Órion",
-                color = White,
+                text = apod.title,
+                color = GalaxiaWhite,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -133,8 +221,8 @@ private fun FeedCard() {
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "24 OUT 2026",
-                color = Gray,
+                text = apod.date,
+                color = GalaxiaGray,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -142,12 +230,11 @@ private fun FeedCard() {
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = "Uma das nebulosas mais brilhantes do céu noturno, " +
-                        "localizada logo ao sul do cinturão de Órion. " +
-                        "Esta imagem composta revela áreas de intensa formação...",
-                color = Gray,
+                text = apod.explanation,
+                color = GalaxiaGray,
                 fontSize = 16.sp,
-                lineHeight = 24.sp
+                lineHeight = 24.sp,
+                maxLines = if (expanded) Int.MAX_VALUE else 4
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -159,21 +246,22 @@ private fun FeedCard() {
             ) {
 
                 IconButton(
-                    onClick = { }
+                    onClick = { /* Favoritar */ }
                 ) {
                     Icon(
                         imageVector = Icons.Default.FavoriteBorder,
                         contentDescription = "Favoritar",
-                        tint = Gray,
+                        tint = GalaxiaGray,
                         modifier = Modifier.size(30.dp)
                     )
                 }
 
                 Text(
-                    text = "LER MAIS →",
-                    color = Cyan,
+                    text = if (expanded) "MOSTRAR MENOS" else "LER MAIS →",
+                    color = GalaxiaCyan,
                     fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable { expanded = !expanded }
                 )
             }
         }
@@ -181,7 +269,10 @@ private fun FeedCard() {
 }
 
 @Composable
-private fun BottomNavigation() {
+private fun BottomNavigation(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit
+) {
 
     Row(
         modifier = Modifier
@@ -196,33 +287,40 @@ private fun BottomNavigation() {
         BottomNavigationItem(
             icon = Icons.Default.Home,
             label = "Feed",
-            selected = true
+            selected = selectedTab == 0,
+            onClick = { onTabSelected(0) }
         )
 
         BottomNavigationItem(
             icon = Icons.Default.CalendarMonth,
             label = "Histórico",
-            selected = false
+            selected = selectedTab == 1,
+            onClick = { onTabSelected(1) }
         )
 
         BottomNavigationItem(
             icon = Icons.Default.FavoriteBorder,
             label = "Favoritos",
-            selected = false
+            selected = selectedTab == 2,
+            onClick = { onTabSelected(2) }
         )
     }
 }
 
 @Composable
 private fun BottomNavigationItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
-    selected: Boolean
+    selected: Boolean,
+    onClick: () -> Unit
 ) {
 
-    val color = if (selected) Cyan else White
+    val color = if (selected) GalaxiaCyan else GalaxiaWhite
 
     Column(
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
@@ -242,4 +340,20 @@ private fun BottomNavigationItem(
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
         )
     }
+}
+
+@Preview(showBackground = true)
+@Composable
+fun FeedCardPreview() {
+    FeedCard(
+        apod = ApodResponse(
+            date = "2026-10-24",
+            explanation = "Uma das nebulosas mais brilhantes do céu no turno, localizada logo ao sul do cinturão de Órion.",
+            hdurl = null,
+            mediaType = "image",
+            serviceVersion = "v1",
+            title = "A Nebulosa de Órion",
+            url = "https://example.com/image.jpg"
+        )
+    )
 }

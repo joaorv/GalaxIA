@@ -1,11 +1,16 @@
 package com.example.galaxia.data.remote
 
+import com.example.galaxia.data.model.ApodResponse
+import retrofit2.http.GET
+import retrofit2.http.Query
+
 /**
  * Definição da API remota do GalaxIA (camada Data - remote).
- *
- * Quando o Retrofit for adicionado ao build.gradle.kts, esta interface
- * passará a declarar os endpoints consumidos da API pública da NASA
- * (ex.: @GET("planetary/apod") para a Foto Astronômica do Dia), com
- * seus parâmetros de data e chave de API.
  */
-interface ApiService
+interface ApiService {
+
+    @GET("planetary/apod")
+    suspend fun getApod(
+        @Query("api_key") apiKey: String = "DEMO_KEY"
+    ): ApodResponse
+}
