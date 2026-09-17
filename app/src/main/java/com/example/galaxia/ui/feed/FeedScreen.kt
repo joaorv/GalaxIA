@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -135,14 +136,11 @@ fun FeedScreen(
                         is FeedViewModel.ApodState.Success -> {
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(
-                                    start = 20.dp,
-                                    end = 20.dp,
-                                    bottom = 20.dp
-                                )
+                                contentPadding = PaddingValues(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                item {
-                                    FeedCard(state.apod)
+                                items(state.apods) { item ->
+                                    FeedCard(item)
                                 }
                             }
                         }

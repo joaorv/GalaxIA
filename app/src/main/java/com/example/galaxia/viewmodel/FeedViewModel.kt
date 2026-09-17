@@ -26,8 +26,8 @@ class FeedViewModel(
             Log.d("FeedViewModel", "Iniciando fetchApod...")
             _apodState.value = ApodState.Loading
             try {
-                val response = repository.getApod()
-                Log.d("FeedViewModel", "Sucesso: ${response.title}")
+                val response = repository.getApodList()
+                Log.d("FeedViewModel", "Sucesso: ${response.size} itens recebidos")
                 _apodState.value = ApodState.Success(response)
             } catch (e: HttpException) {
                 val errorMsg = when (e.code()) {
@@ -49,7 +49,7 @@ class FeedViewModel(
 
     sealed class ApodState {
         object Loading : ApodState()
-        data class Success(val apod: ApodResponse) : ApodState()
+        data class Success(val apods: List<ApodResponse>) : ApodState()
         data class Error(val message: String) : ApodState()
     }
 }

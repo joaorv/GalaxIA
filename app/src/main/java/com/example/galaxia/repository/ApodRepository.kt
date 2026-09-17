@@ -8,7 +8,7 @@ class ApodRepository(
     private val apiService: ApiService = RetrofitClient.apiService
 ) : BaseRepository {
 
-    suspend fun getApod(): ApodResponse {
-        return apiService.getApod()
+    suspend fun getApodList(count: Int = 10): List<ApodResponse> {
+        return apiService.getApodList(count = count)
     }
 }
