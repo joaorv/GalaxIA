@@ -11,4 +11,8 @@ class ApodRepository(
     suspend fun getApodList(count: Int = 10): List<ApodResponse> {
         return apiService.getApodList(count = count)
     }
+
+    suspend fun getApodByDate(date: String): ApodResponse {
+        return apiService.getApodByDate(date = date)
+    }
 }
