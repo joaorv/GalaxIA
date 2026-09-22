@@ -8,11 +8,12 @@ import com.google.gson.annotations.SerializedName
 data class ApodResponse(
     val date: String,
     val explanation: String,
-    val hdurl: String?,
+    val hdurl: String? = null,
     @SerializedName("media_type")
     val mediaType: String,
     @SerializedName("service_version")
-    val serviceVersion: String,
+    val serviceVersion: String? = "v1",
     val title: String,
-    val url: String
+    val url: String,
+    val copyright: String? = null
 ) : BaseModel

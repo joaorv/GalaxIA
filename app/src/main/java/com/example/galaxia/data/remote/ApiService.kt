@@ -11,4 +11,10 @@ interface ApiService {
         @Query("api_key") apiKey: String = "DEMO_KEY",
         @Query("count") count: Int = 10
     ): List<ApodResponse>
+
+    @GET("planetary/apod")
+    suspend fun getApodByDate(
+        @Query("date") date: String,
+        @Query("api_key") apiKey: String = "DEMO_KEY"
+    ): ApodResponse
 }

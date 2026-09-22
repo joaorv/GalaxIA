@@ -1,5 +1,7 @@
 package com.example.galaxia.ui.feed
 
+import com.example.galaxia.ui.history.HistoryScreen
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -147,10 +149,8 @@ fun FeedScreen(
                     }
                 }
                 1 -> {
-                    Text(
-                        text = "Histórico em breve",
-                        color = GalaxiaWhite,
-                        modifier = Modifier.align(Alignment.Center)
+                    HistoryScreen(
+                        viewModel = viewModel
                     )
                 }
                 2 -> {
