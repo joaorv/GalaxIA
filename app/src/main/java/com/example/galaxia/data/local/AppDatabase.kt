@@ -1,11 +1,27 @@
 package com.example.galaxia.data.local
 
+import android.content.Context
+
 /**
- * Banco de dados local do GalaxIA (camada Data - local).
- *
- * Quando o Room for adicionado ao build.gradle.kts, esta classe
- * passará a estender androidx.room.RoomDatabase e centralizar o
- * acesso aos DAOs responsáveis por persistir os itens favoritados
- * pelo usuário (ex.: fotos do APOD salvas localmente).
+ * Ponto de acesso central aos dados locais do GalaxIA (camada Data - local).
+ * Fornece o DAO de favoritos utilizando o armazenamento local limpo (SharedPreferences + Gson).
  */
-abstract class AppDatabase
+class AppDatabase private constructor(private val context: Context) {
+
+    fun favoriteDao(): FavoriteDao {
+        return FavoritesLocalDataSource.getInstance(context)
+    }
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = AppDatabase(context.applicationContext)
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+}

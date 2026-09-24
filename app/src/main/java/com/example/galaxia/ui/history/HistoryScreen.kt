@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Copyright
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
@@ -75,6 +76,7 @@ fun HistoryScreen(
 ) {
     val selectedDateString by viewModel.historySelectedDate.collectAsState()
     val historyState by viewModel.historyState.collectAsState()
+    val favoriteIds by viewModel.favoriteIds.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
 
     val parsedDate = remember(selectedDateString) {
@@ -258,7 +260,11 @@ fun HistoryScreen(
             }
 
             is FeedViewModel.HistoryState.Success -> {
-                HistoryCard(apod = state.apod)
+                HistoryCard(
+                    apod = state.apod,
+                    isFavorite = "apod_${state.apod.date}" in favoriteIds,
+                    onToggleFavorite = { viewModel.toggleFavoriteApod(state.apod) }
+                )
             }
         }
     }
@@ -325,7 +331,11 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun HistoryCard(apod: ApodResponse) {
+private fun HistoryCard(
+    apod: ApodResponse,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {}
+) {
     var expanded by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
@@ -431,12 +441,12 @@ private fun HistoryCard(apod: ApodResponse) {
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = { /* Favoritar */ }
+                        onClick = onToggleFavorite
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FavoriteBorder,
-                            contentDescription = "Favoritar",
-                            tint = GalaxiaGray,
+                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
+                            tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
                             modifier = Modifier.size(26.dp)
                         )
                     }

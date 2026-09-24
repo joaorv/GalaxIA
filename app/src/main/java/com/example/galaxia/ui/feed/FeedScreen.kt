@@ -1,6 +1,7 @@
 package com.example.galaxia.ui.feed
 
 import com.example.galaxia.ui.history.HistoryScreen
+import com.example.galaxia.ui.favorites.FavoritesScreen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
@@ -63,6 +65,7 @@ fun FeedScreen(
     viewModel: FeedViewModel = viewModel(),
 ) {
     val apodState by viewModel.apodState.collectAsState()
+    val favoriteIds by viewModel.favoriteIds.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
 
     Column(
@@ -141,8 +144,15 @@ fun FeedScreen(
                                 contentPadding = PaddingValues(20.dp),
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
-                                items(state.apods) { item ->
-                                    FeedCard(item)
+                                items(
+                                    items = state.apods,
+                                    key = { it.date }
+                                ) { item ->
+                                    FeedCard(
+                                        apod = item,
+                                        isFavorite = "apod_${item.date}" in favoriteIds,
+                                        onToggleFavorite = { viewModel.toggleFavoriteApod(item) }
+                                    )
                                 }
                             }
                         }
@@ -154,10 +164,8 @@ fun FeedScreen(
                     )
                 }
                 2 -> {
-                    Text(
-                        text = "Favoritos em breve",
-                        color = GalaxiaWhite,
-                        modifier = Modifier.align(Alignment.Center)
+                    FavoritesScreen(
+                        viewModel = viewModel
                     )
                 }
             }
@@ -172,7 +180,11 @@ fun FeedScreen(
 }
 
 @Composable
-private fun FeedCard(apod: ApodResponse) {
+private fun FeedCard(
+    apod: ApodResponse,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {}
+) {
     var expanded by remember { mutableStateOf(false) }
 
     Column(
@@ -244,12 +256,12 @@ private fun FeedCard(apod: ApodResponse) {
             ) {
 
                 IconButton(
-                    onClick = { /* Favoritar */ }
+                    onClick = onToggleFavorite
                 ) {
                     Icon(
-                        imageVector = Icons.Default.FavoriteBorder,
-                        contentDescription = "Favoritar",
-                        tint = GalaxiaGray,
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
+                        tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
                         modifier = Modifier.size(30.dp)
                     )
                 }
