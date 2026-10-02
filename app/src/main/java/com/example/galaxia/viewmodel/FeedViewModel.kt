@@ -122,7 +122,7 @@ class FeedViewModel(
             } catch (e: HttpException) {
                 val errorMsg = when (e.code()) {
                     403 -> "Chave de API inválida ou expirada."
-                    429 -> "Limite de requisições da NASA atingido (DEMO_KEY). Tente mais tarde."
+                    429 -> "Limite de requisições da NASA atingido. Tente mais tarde."
                     else -> "Erro na API da NASA: ${e.code()}"
                 }
                 Log.e("FeedViewModel", "Erro HTTP: $errorMsg", e)
@@ -154,7 +154,7 @@ class FeedViewModel(
                 val errorMsg = when (e.code()) {
                     400 -> "Nenhuma foto publicada para a data selecionada ($dateString)."
                     403 -> "Chave de API inválida ou expirada."
-                    429 -> "Limite de requisições da NASA atingido (DEMO_KEY). Tente mais tarde."
+                    429 -> "Limite de requisições da NASA atingido. Tente mais tarde."
                     else -> "Erro na API da NASA (${e.code()})"
                 }
                 Log.e("FeedViewModel", "Erro HTTP ao buscar histórico: $errorMsg", e)

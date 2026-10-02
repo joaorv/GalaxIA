@@ -8,25 +8,81 @@ import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.data.local.toFavoriteEntity
 import com.example.galaxia.data.model.ApodResponse
 import com.example.galaxia.data.remote.ApiService
+import com.example.galaxia.data.remote.ApodMockData
 import com.example.galaxia.data.remote.RetrofitClient
+import com.example.galaxia.data.translation.MlKitTranslationService
+import com.example.galaxia.data.translation.TranslationService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import java.util.concurrent.ConcurrentHashMap
 
 class ApodRepository(
     private val apiService: ApiService = RetrofitClient.apiService,
+    private val translationService: TranslationService = MlKitTranslationService(),
     private val favoriteDao: FavoriteDao = AppDatabase.getDatabase(GalaxiaApplication.instance).favoriteDao()
 ) : BaseRepository {
 
-    // --- Remoto (NASA APOD) ---
+    // Cache em memória para otimizar e evitar re-traduções do mesmo item durante a execução
+    private val translationCache = ConcurrentHashMap<String, Pair<String, String>>()
 
-    suspend fun getApodList(count: Int = 10): List<ApodResponse> {
-        return apiService.getApodList(count = count)
+    // --- Remoto (NASA APOD + Tradução Automática + Fallback de Contingência) ---
+
+    suspend fun getApodList(count: Int = 10): List<ApodResponse> = coroutineScope {
+        try {
+            val originalList = apiService.getApodList(count = count)
+
+            // Traduz os itens em paralelo utilizando corrotinas
+            originalList.map { apod ->
+                async {
+                    translateApod(apod)
+                }
+            }.awaitAll()
+        } catch (e: Exception) {
+            // Em caso de limitação da API da NASA (HTTP 429 DEMO_KEY) ou erro de conexão,
+            // retorna dados de contingência para que o app continue funcionando normalmente.
+            ApodMockData.sampleApods
+        }
     }
 
     suspend fun getApodByDate(date: String): ApodResponse {
-        return apiService.getApodByDate(date = date)
+        return try {
+            val original = apiService.getApodByDate(date = date)
+            translateApod(original)
+        } catch (e: Exception) {
+            ApodMockData.getMockByDate(date)
+        }
     }
 
-    // --- Local (Favoritos via Room) ---
+    private suspend fun translateApod(apod: ApodResponse): ApodResponse {
+        val cacheKey = apod.date
+        translationCache[cacheKey]?.let { (translatedTitle, translatedExplanation) ->
+            return apod.copy(
+                translatedTitle = translatedTitle,
+                translatedExplanation = translatedExplanation,
+                isTranslated = true
+            )
+        }
+
+        return try {
+            val titlePt = translationService.translateText(apod.title)
+            val explanationPt = translationService.translateText(apod.explanation)
+
+            translationCache[cacheKey] = Pair(titlePt, explanationPt)
+
+            apod.copy(
+                translatedTitle = titlePt,
+                translatedExplanation = explanationPt,
+                isTranslated = true
+            )
+        } catch (e: Exception) {
+            // Em caso de falha de tradução, mantém o item original com fallback transparente
+            apod.copy(isTranslated = false)
+        }
+    }
+
+    // --- Local (Favoritos via Room / Persistence) ---
 
     fun getAllFavorites(): Flow<List<FavoriteEntity>> {
         return favoriteDao.getAllFavorites()

@@ -198,7 +198,7 @@ private fun FeedCard(
         if (apod.mediaType == "image") {
             AsyncImage(
                 model = apod.url,
-                contentDescription = apod.title,
+                contentDescription = apod.displayTitle,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(230.dp),
@@ -222,7 +222,7 @@ private fun FeedCard(
         ) {
 
             Text(
-                text = apod.title,
+                text = apod.displayTitle,
                 color = GalaxiaWhite,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
@@ -240,7 +240,7 @@ private fun FeedCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = apod.explanation,
+                text = apod.displayExplanation,
                 color = GalaxiaGray,
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
