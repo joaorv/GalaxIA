@@ -4,22 +4,30 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Fonte de dados local para persistência de favoritos usando SharedPreferences e Gson.
- * Implementa FavoriteDao sem requerer KSP ou plugins adicionais de compilação.
+ * Implementa FavoritesDataSource sem requerer KSP ou plugins adicionais de compilação.
+ * Todas as operações pesadas de I/O e serialização são despachadas para Dispatchers.IO.
  */
-class FavoritesLocalDataSource private constructor(context: Context) : FavoriteDao {
+class FavoritesLocalDataSource private constructor(context: Context) : FavoritesDataSource {
 
     private val prefs: SharedPreferences = context.applicationContext.getSharedPreferences(
         PREFS_NAME,
         Context.MODE_PRIVATE
     )
     private val gson = Gson()
+    private val mutex = Mutex()
 
     private val _favoritesFlow = MutableStateFlow<List<FavoriteEntity>>(loadFavoritesFromDisk())
 
@@ -28,14 +36,20 @@ class FavoritesLocalDataSource private constructor(context: Context) : FavoriteD
         return try {
             val type = object : TypeToken<List<FavoriteEntity>>() {}.type
             gson.fromJson<List<FavoriteEntity>>(json, type) ?: emptyList()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
 
-    private fun persistToDisk(list: List<FavoriteEntity>) {
-        val json = gson.toJson(list)
-        prefs.edit().putString(KEY_FAVORITES, json).apply()
+    private suspend fun persistToDisk(list: List<FavoriteEntity>) {
+        withContext(Dispatchers.IO) {
+            try {
+                val json = gson.toJson(list)
+                prefs.edit().putString(KEY_FAVORITES, json).apply()
+            } catch (_: Exception) {
+                // Silenciosamente tolera ou loga erro de serialização
+            }
+        }
     }
 
     override fun getAllFavorites(): Flow<List<FavoriteEntity>> {
@@ -61,11 +75,13 @@ class FavoritesLocalDataSource private constructor(context: Context) : FavoriteD
     }
 
     override suspend fun insertFavorite(favorite: FavoriteEntity) {
-        val current = _favoritesFlow.value.toMutableList()
-        current.removeAll { it.id == favorite.id }
-        current.add(0, favorite)
-        _favoritesFlow.value = current
-        persistToDisk(current)
+        mutex.withLock {
+            val current = _favoritesFlow.value.toMutableList()
+            current.removeAll { it.id == favorite.id }
+            current.add(0, favorite)
+            _favoritesFlow.value = current
+            persistToDisk(current)
+        }
     }
 
     override suspend fun deleteFavorite(favorite: FavoriteEntity) {
@@ -73,11 +89,13 @@ class FavoritesLocalDataSource private constructor(context: Context) : FavoriteD
     }
 
     override suspend fun deleteFavoriteById(id: String) {
-        val current = _favoritesFlow.value.toMutableList()
-        val changed = current.removeAll { it.id == id }
-        if (changed) {
-            _favoritesFlow.value = current
-            persistToDisk(current)
+        mutex.withLock {
+            val current = _favoritesFlow.value.toMutableList()
+            val changed = current.removeAll { it.id == id }
+            if (changed) {
+                _favoritesFlow.value = current
+                persistToDisk(current)
+            }
         }
     }
 

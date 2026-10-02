@@ -3,13 +3,17 @@ package com.example.galaxia.data.local
 import android.content.Context
 
 /**
- * Ponto de acesso central aos dados locais do GalaxIA (camada Data - local).
- * Fornece o DAO de favoritos utilizando o armazenamento local limpo (SharedPreferences + Gson).
+ * Provedor de acesso centralizado aos recursos de armazenamento local do GalaxIA.
  */
 class AppDatabase private constructor(private val context: Context) {
 
-    fun favoriteDao(): FavoriteDao {
+    fun favoritesDataSource(): FavoritesDataSource {
         return FavoritesLocalDataSource.getInstance(context)
+    }
+
+    @Deprecated("Utilize favoritesDataSource()", ReplaceWith("favoritesDataSource()"))
+    fun favoriteDao(): FavoritesDataSource {
+        return favoritesDataSource()
     }
 
     companion object {

@@ -3,22 +3,33 @@ package com.example.galaxia.viewmodel
 import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.example.galaxia.data.local.FavoriteEntity
+import com.example.galaxia.data.local.FavoriteSortOrder
 import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.data.model.ApodResponse
 import com.example.galaxia.repository.ApodRepository
+import com.example.galaxia.repository.FavoriteRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 class FeedViewModel(
-    private val repository: ApodRepository = ApodRepository()
+    private val apodRepository: ApodRepository = ApodRepository(),
+    private val favoriteRepository: FavoriteRepository = FavoriteRepository()
 ) : BaseViewModel() {
 
     // --- Estados do Feed e Histórico (NASA APOD) ---
@@ -31,32 +42,67 @@ class FeedViewModel(
     private val _historyState = MutableStateFlow<HistoryState>(HistoryState.Loading)
     val historyState: StateFlow<HistoryState> = _historyState
 
-    // --- Estados de Favoritos (Room Database) ---
+    // --- Eventos de Notificação/Feedback (Snackbar) ---
+    private val _userMessage = MutableSharedFlow<String>()
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
+
+    // --- Estados de Favoritos (Persistência Local) ---
     private val _favoriteIds = MutableStateFlow<Set<String>>(emptySet())
     val favoriteIds: StateFlow<Set<String>> = _favoriteIds
 
     private val _selectedFavoriteFilter = MutableStateFlow<FavoriteType?>(null)
     val selectedFavoriteFilter: StateFlow<FavoriteType?> = _selectedFavoriteFilter
 
+    private val _favoriteSortOrder = MutableStateFlow<FavoriteSortOrder>(FavoriteSortOrder.NEWEST)
+    val favoriteSortOrder: StateFlow<FavoriteSortOrder> = _favoriteSortOrder
+
+    private val _isFavoritesLoading = MutableStateFlow(false)
+    val isFavoritesLoading: StateFlow<Boolean> = _isFavoritesLoading.asStateFlow()
+
+    private var filterJob: Job? = null
+
     private val _allFavorites = MutableStateFlow<List<FavoriteEntity>>(emptyList())
 
     /**
-     * Lista de favoritos filtrada de acordo com o filtro selecionado (Todos, Fotos, etc.).
+     * Lista de favoritos filtrada por categoria e ordenada de acordo com a preferência do usuário.
      */
     val filteredFavorites: StateFlow<List<FavoriteEntity>> = combine(
         _allFavorites,
-        _selectedFavoriteFilter
-    ) { favorites, filter ->
-        if (filter == null) {
+        _selectedFavoriteFilter,
+        _favoriteSortOrder
+    ) { favorites, filter, sortOrder ->
+        val filtered = if (filter == null) {
             favorites
         } else {
             favorites.filter { it.itemType == filter.name }
+        }
+
+        when (sortOrder) {
+            FavoriteSortOrder.NEWEST -> filtered.sortedWith(
+                compareByDescending<FavoriteEntity> { parseItemDate(it.subtitleOrDate) }
+                    .thenByDescending { it.subtitleOrDate }
+                    .thenByDescending { it.savedAtTimestamp }
+            )
+            FavoriteSortOrder.OLDEST -> filtered.sortedWith(
+                compareBy<FavoriteEntity> { parseItemDate(it.subtitleOrDate) }
+                    .thenBy { it.subtitleOrDate }
+                    .thenBy { it.savedAtTimestamp }
+            )
+            FavoriteSortOrder.ALPHABETICAL -> filtered.sortedBy { it.title.lowercase().trim() }
         }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
+
+    private fun parseItemDate(subtitleOrDate: String): LocalDate {
+        return try {
+            LocalDate.parse(subtitleOrDate, DateTimeFormatter.ISO_LOCAL_DATE)
+        } catch (_: Exception) {
+            LocalDate.MIN
+        }
+    }
 
     init {
         fetchApod()
@@ -66,13 +112,13 @@ class FeedViewModel(
 
     private fun observeFavorites() {
         viewModelScope.launch {
-            repository.getAllFavorites().collect { favorites ->
+            favoriteRepository.getAllFavorites().collect { favorites ->
                 _allFavorites.value = favorites
             }
         }
 
         viewModelScope.launch {
-            repository.getAllFavoriteIds().collect { ids ->
+            favoriteRepository.getAllFavoriteIds().collect { ids ->
                 _favoriteIds.value = ids.toSet()
             }
         }
@@ -81,7 +127,25 @@ class FeedViewModel(
     // --- Ações de Favoritos ---
 
     fun setFavoriteFilter(filter: FavoriteType?) {
-        _selectedFavoriteFilter.value = filter
+        if (_selectedFavoriteFilter.value == filter) return
+        filterJob?.cancel()
+        filterJob = viewModelScope.launch {
+            _isFavoritesLoading.value = true
+            _selectedFavoriteFilter.value = filter
+            delay(200)
+            _isFavoritesLoading.value = false
+        }
+    }
+
+    fun setFavoriteSortOrder(order: FavoriteSortOrder) {
+        if (_favoriteSortOrder.value == order) return
+        filterJob?.cancel()
+        filterJob = viewModelScope.launch {
+            _isFavoritesLoading.value = true
+            _favoriteSortOrder.value = order
+            delay(200)
+            _isFavoritesLoading.value = false
+        }
     }
 
     fun isApodFavorite(date: String): Boolean {
@@ -92,9 +156,12 @@ class FeedViewModel(
         viewModelScope.launch {
             try {
                 val isCurrentlyFavorite = isApodFavorite(apod.date)
-                repository.toggleFavoriteApod(apod, isCurrentlyFavorite)
+                val added = favoriteRepository.toggleFavoriteApod(apod, isCurrentlyFavorite)
+                val message = if (added) "Foto adicionada aos favoritos" else "Foto removida dos favoritos"
+                _userMessage.emit(message)
             } catch (e: Exception) {
                 Log.e("FeedViewModel", "Erro ao alternar favorito", e)
+                _userMessage.emit("Erro ao atualizar favoritos")
             }
         }
     }
@@ -102,9 +169,11 @@ class FeedViewModel(
     fun removeFavoriteById(id: String) {
         viewModelScope.launch {
             try {
-                repository.removeFavoriteById(id)
+                favoriteRepository.removeFavoriteById(id)
+                _userMessage.emit("Foto removida dos favoritos")
             } catch (e: Exception) {
                 Log.e("FeedViewModel", "Erro ao remover favorito por id: $id", e)
+                _userMessage.emit("Erro ao remover favorito")
             }
         }
     }
@@ -116,7 +185,7 @@ class FeedViewModel(
             Log.d("FeedViewModel", "Iniciando fetchApod...")
             _apodState.value = ApodState.Loading
             try {
-                val response = repository.getApodList()
+                val response = apodRepository.getApodList()
                 Log.d("FeedViewModel", "Sucesso: ${response.size} itens recebidos")
                 _apodState.value = ApodState.Success(response)
             } catch (e: HttpException) {
@@ -127,9 +196,15 @@ class FeedViewModel(
                 }
                 Log.e("FeedViewModel", "Erro HTTP: $errorMsg", e)
                 _apodState.value = ApodState.Error(errorMsg)
-            } catch (e: IOException) {
-                Log.e("FeedViewModel", "Erro de conexão", e)
+            } catch (e: SocketTimeoutException) {
+                Log.e("FeedViewModel", "Timeout na resposta da NASA", e)
+                _apodState.value = ApodState.Error("O servidor da NASA demorou muito para responder. Toque em tentar novamente.")
+            } catch (e: UnknownHostException) {
+                Log.e("FeedViewModel", "Sem conexão com o servidor", e)
                 _apodState.value = ApodState.Error("Sem conexão com a internet. Verifique seu Wi-Fi ou dados móveis.")
+            } catch (e: IOException) {
+                Log.e("FeedViewModel", "Erro de E/S ou rede", e)
+                _apodState.value = ApodState.Error("Falha na comunicação com a rede. Tente novamente.")
             } catch (e: Exception) {
                 Log.e("FeedViewModel", "Erro inesperado", e)
                 _apodState.value = ApodState.Error("Ocorreu um erro inesperado: ${e.message}")
@@ -147,7 +222,7 @@ class FeedViewModel(
             Log.d("FeedViewModel", "Iniciando fetchHistoryByDate para data: $dateString")
             _historyState.value = HistoryState.Loading
             try {
-                val response = repository.getApodByDate(dateString)
+                val response = apodRepository.getApodByDate(dateString)
                 Log.d("FeedViewModel", "Sucesso foto do dia $dateString: ${response.title}")
                 _historyState.value = HistoryState.Success(response)
             } catch (e: HttpException) {
@@ -159,9 +234,15 @@ class FeedViewModel(
                 }
                 Log.e("FeedViewModel", "Erro HTTP ao buscar histórico: $errorMsg", e)
                 _historyState.value = HistoryState.Error(errorMsg)
+            } catch (e: SocketTimeoutException) {
+                Log.e("FeedViewModel", "Timeout ao buscar histórico", e)
+                _historyState.value = HistoryState.Error("O servidor da NASA demorou muito para responder. Toque em tentar novamente.")
+            } catch (e: UnknownHostException) {
+                Log.e("FeedViewModel", "Sem conexão com o servidor ao buscar histórico", e)
+                _historyState.value = HistoryState.Error("Sem conexão com a internet. Verifique seu Wi-Fi ou dados móveis.")
             } catch (e: IOException) {
                 Log.e("FeedViewModel", "Erro de conexão ao buscar histórico", e)
-                _historyState.value = HistoryState.Error("Sem conexão com a internet. Verifique seu Wi-Fi ou dados móveis.")
+                _historyState.value = HistoryState.Error("Falha na comunicação com a rede. Tente novamente.")
             } catch (e: Exception) {
                 Log.e("FeedViewModel", "Erro inesperado ao buscar histórico", e)
                 _historyState.value = HistoryState.Error("Ocorreu um erro inesperado: ${e.message}")

@@ -31,10 +31,20 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,6 +69,7 @@ import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
 import com.example.galaxia.ui.theme.GalaxiaWhite
 import com.example.galaxia.viewmodel.FeedViewModel
+import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun FeedScreen(
@@ -67,12 +78,44 @@ fun FeedScreen(
     val apodState by viewModel.apodState.collectAsState()
     val favoriteIds by viewModel.favoriteIds.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(GalaxiaBackground)
-    ) {
+    LaunchedEffect(viewModel) {
+        viewModel.userMessage.collectLatest { message ->
+            snackbarHostState.currentSnackbarData?.dismiss()
+            coroutineScope {
+                val showJob = launch {
+                    snackbarHostState.showSnackbar(
+                        message = message,
+                        duration = SnackbarDuration.Indefinite
+                    )
+                }
+                delay(1200.milliseconds) // Exibe por 1.2s e desaparece rapidamente
+                showJob.cancel()
+                snackbarHostState.currentSnackbarData?.dismiss()
+            }
+        }
+    }
+
+    Scaffold(
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = GalaxiaCardBackground,
+                    contentColor = GalaxiaWhite,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        },
+        containerColor = GalaxiaBackground
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(GalaxiaBackground)
+        ) {
 
         // Cabeçalho
         Row(
@@ -178,6 +221,7 @@ fun FeedScreen(
         )
     }
 }
+}
 
 @Composable
 private fun FeedCard(
@@ -201,7 +245,8 @@ private fun FeedCard(
                 contentDescription = apod.title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(230.dp),
+                    .height(230.dp)
+                    .background(Color(0xFF161822)),
                 contentScale = ContentScale.Crop
             )
         } else {

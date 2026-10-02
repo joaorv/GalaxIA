@@ -1,8 +1,11 @@
 package com.example.galaxia.ui.favorites
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,19 +23,26 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Copyright
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.example.galaxia.data.local.FavoriteEntity
+import com.example.galaxia.data.local.FavoriteSortOrder
 import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
@@ -64,6 +75,13 @@ fun FavoritesScreen(
 ) {
     val favorites by viewModel.filteredFavorites.collectAsState()
     val selectedFilter by viewModel.selectedFavoriteFilter.collectAsState()
+    val selectedSortOrder by viewModel.favoriteSortOrder.collectAsState()
+    val isLoading by viewModel.isFavoritesLoading.collectAsState()
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(selectedFilter, selectedSortOrder) {
+        listState.scrollToItem(0)
+    }
 
     Column(
         modifier = Modifier
@@ -118,7 +136,7 @@ fun FavoritesScreen(
                     )
                 }
 
-                items(FavoriteType.values()) { type ->
+                items(FavoriteType.entries.toTypedArray()) { type ->
                     val isSelected = selectedFilter == type
                     FilterChip(
                         selected = isSelected,
@@ -135,25 +153,131 @@ fun FavoritesScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Seção de Ordenação (Mais recentes, Mais antigos, Ordem alfabética)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Sort,
+                    contentDescription = "Ordenar por",
+                    tint = GalaxiaGray,
+                    modifier = Modifier.size(15.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Ordenar por:",
+                    color = GalaxiaGray,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(FavoriteSortOrder.entries.toTypedArray()) { order ->
+                    val isSelected = selectedSortOrder == order
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { viewModel.setFavoriteSortOrder(order) },
+                        label = {
+                            Text(
+                                text = order.displayName,
+                                fontSize = 12.sp
+                            )
+                        },
+                        leadingIcon = {
+                            when (order) {
+                                FavoriteSortOrder.NEWEST -> Icon(
+                                    imageVector = Icons.Default.ArrowDownward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                FavoriteSortOrder.OLDEST -> Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                FavoriteSortOrder.ALPHABETICAL -> Icon(
+                                    imageVector = Icons.Default.SortByAlpha,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = GalaxiaCardBackground,
+                            labelColor = GalaxiaGray,
+                            iconColor = GalaxiaGray,
+                            selectedContainerColor = GalaxiaCyan.copy(alpha = 0.2f),
+                            selectedLabelColor = GalaxiaCyan,
+                            selectedLeadingIconColor = GalaxiaCyan
+                        ),
+                        border = null,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+            }
         }
 
-        // Conteúdo da Lista ou Estado Vazio
-        if (favorites.isEmpty()) {
-            EmptyFavoritesState(selectedFilter = selectedFilter)
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp, top = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(
-                    items = favorites,
-                    key = { it.id }
-                ) { item ->
-                    FavoriteCard(
-                        favorite = item,
-                        onRemoveFavorite = { viewModel.removeFavoriteById(item.id) }
-                    )
+        // Conteúdo da Lista ou Estado Vazio com Animação de Carregamento/Transição
+        Box(modifier = Modifier.fillMaxSize()) {
+            AnimatedContent(
+                targetState = isLoading,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(180)) togetherWith fadeOut(animationSpec = tween(140))
+                },
+                label = "FavoritesLoadingTransition"
+            ) { loading ->
+                if (loading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = 60.dp),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = GalaxiaCyan,
+                                modifier = Modifier.size(36.dp),
+                                strokeWidth = 3.dp
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = "Atualizando favoritos...",
+                                color = GalaxiaGray,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                } else if (favorites.isEmpty()) {
+                    EmptyFavoritesState(selectedFilter = selectedFilter)
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp, top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        items(
+                            items = favorites,
+                            key = { "${it.id}_${selectedSortOrder.name}_${selectedFilter?.name ?: "all"}" }
+                        ) { item ->
+                            FavoriteCard(
+                                favorite = item,
+                                onRemoveFavorite = { viewModel.removeFavoriteById(item.id) }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -182,7 +306,8 @@ private fun FavoriteCard(
                 contentDescription = favorite.title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(230.dp),
+                    .height(230.dp)
+                    .background(Color(0xFF161822)),
                 contentScale = ContentScale.Crop
             )
         } else {

@@ -351,7 +351,8 @@ private fun HistoryCard(
                 contentDescription = apod.title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp),
+                    .height(260.dp)
+                    .background(Color(0xFF161822)),
                 contentScale = ContentScale.Crop
             )
         } else {
