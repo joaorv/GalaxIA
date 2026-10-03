@@ -347,8 +347,8 @@ private fun HistoryCard(
     ) {
         if (apod.mediaType == "image") {
             AsyncImage(
-                model = apod.url,
-                contentDescription = apod.title,
+                model = apod.displayImageUrl,
+                contentDescription = apod.alt ?: apod.title,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(260.dp)
@@ -383,7 +383,7 @@ private fun HistoryCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Data formatada e Copyright
+            // Data formatada e Copyright / Autor
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -404,7 +404,7 @@ private fun HistoryCard(
                     )
                 }
 
-                apod.copyright?.let { copyright ->
+                apod.author?.let { author ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Copyright,
@@ -414,7 +414,7 @@ private fun HistoryCard(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = copyright.trim().replace("\n", " "),
+                            text = author.trim().replace("\n", " "),
                             color = GalaxiaGray,
                             fontSize = 13.sp,
                             maxLines = 1
@@ -426,7 +426,7 @@ private fun HistoryCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = apod.explanation,
+                text = apod.cleanExplanation,
                 color = GalaxiaGray,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,

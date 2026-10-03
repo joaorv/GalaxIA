@@ -16,13 +16,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Copyright
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -56,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -230,6 +234,7 @@ private fun FeedCard(
     onToggleFavorite: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
 
     Column(
         modifier = Modifier
@@ -239,10 +244,11 @@ private fun FeedCard(
             .clickable { expanded = !expanded }
     ) {
 
-        if (apod.mediaType == "image") {
+        // Imagem ou Placeholder de Vídeo
+        if (apod.mediaType == "image" && apod.displayImageUrl.isNotBlank()) {
             AsyncImage(
-                model = apod.url,
-                contentDescription = apod.title,
+                model = apod.displayImageUrl,
+                contentDescription = apod.alt ?: apod.title,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(230.dp)
@@ -250,71 +256,123 @@ private fun FeedCard(
                 contentScale = ContentScale.Crop
             )
         } else {
-            // Placeholder para vídeos (o APOD às vezes retorna links do YouTube)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(230.dp)
+                    .height(180.dp)
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Vídeo não suportado nesta versão", color = GalaxiaWhite)
+                Text(
+                    text = apod.title,
+                    color = GalaxiaWhite,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
 
-        Column(
-            modifier = Modifier.padding(20.dp)
-        ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            // Data do Item
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CalendarMonth,
+                    contentDescription = null,
+                    tint = GalaxiaGray,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = apod.date,
+                    color = GalaxiaGray,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Título
             Text(
                 text = apod.title,
                 color = GalaxiaWhite,
-                fontSize = 22.sp,
+                fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            // Autor / Copyright se houver
+            apod.author?.let { copyright ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Copyright,
+                        contentDescription = null,
+                        tint = GalaxiaGray,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = copyright.trim().replace("\n", " "),
+                        color = GalaxiaGray,
+                        fontSize = 12.sp,
+                        maxLines = 1
+                    )
+                }
+            }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Texto da Explicação
             Text(
-                text = apod.date,
+                text = apod.cleanExplanation,
                 color = GalaxiaGray,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                maxLines = if (expanded) Int.MAX_VALUE else 3
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Text(
-                text = apod.explanation,
-                color = GalaxiaGray,
-                fontSize = 16.sp,
-                lineHeight = 24.sp,
-                maxLines = if (expanded) Int.MAX_VALUE else 4
-            )
-
-            Spacer(modifier = Modifier.height(20.dp))
-
+            // Ações: Botão de Favorito, Link NASA e Expandir
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onToggleFavorite) {
+                        Icon(
+                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
+                            tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
 
-                IconButton(
-                    onClick = onToggleFavorite
-                ) {
-                    Icon(
-                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
-                        tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
-                        modifier = Modifier.size(30.dp)
-                    )
+                    val targetUrl = apod.permalink ?: apod.url
+                    if (targetUrl.isNotBlank()) {
+                        IconButton(
+                            onClick = {
+                                try {
+                                    uriHandler.openUri(targetUrl)
+                                } catch (_: Exception) {}
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = "Abrir no site da NASA",
+                                tint = GalaxiaCyan,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
                 }
 
                 Text(
                     text = if (expanded) "MOSTRAR MENOS" else "LER MAIS →",
                     color = GalaxiaCyan,
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable { expanded = !expanded }
                 )

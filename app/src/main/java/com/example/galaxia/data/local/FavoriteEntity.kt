@@ -30,11 +30,11 @@ fun ApodResponse.toFavoriteEntity(): FavoriteEntity {
         itemType = FavoriteType.APOD.name,
         title = title,
         subtitleOrDate = date,
-        explanationOrBody = explanation,
-        imageUrl = url,
-        extraUrl = hdurl,
+        explanationOrBody = cleanExplanation,
+        imageUrl = displayImageUrl,
+        extraUrl = permalink ?: hdurl ?: url,
         mediaType = mediaType,
-        authorOrCopyright = copyright
+        authorOrCopyright = author
     )
 }
 
