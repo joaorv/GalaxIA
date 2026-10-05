@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.retrofit.gson)
     implementation(libs.coil.compose)
     implementation(libs.coil.network)
+    implementation(libs.mlkit.translate)
     testImplementation(libs.junit)
     implementation(libs.androidx.compose.material.icons.extended)
     androidTestImplementation(platform(libs.androidx.compose.bom))
