@@ -9,8 +9,12 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * Implementação do serviço de tradução utilizando Google ML Kit On-Device Translation.
- * Realiza traduções totalmente locais no dispositivo, sem custos e offline após o download inicial do modelo.
+ * Implementação do serviço de tradução utilizando o Google ML Kit On-Device Translation.
+ *
+ * Características de Arquitetura:
+ * - Execução local no processador do dispositivo (sem custo de API de tradução).
+ * - Operação offline após o download do pacote de idioma (EN ➔ PT).
+ * - Tratamento de falhas resiliente: preserva a experiência do usuário retornando o texto original.
  */
 class MlKitTranslationService : TranslationService {
 
@@ -29,16 +33,19 @@ class MlKitTranslationService : TranslationService {
         if (text.isBlank()) return text
 
         return try {
-            // Garante que o modelo de idioma está disponível no dispositivo
+            // Garante a disponibilidade do modelo de linguagem no armazenamento local
             translator.downloadModelIfNeeded().awaitResult()
-            // Traduz o texto de forma assíncrona no processador local
+            // Realiza a tradução no processador do aparelho
             translator.translate(text).awaitResult()
         } catch (e: Exception) {
-            // Em caso de falha na tradução (ex: offline antes de baixar modelo), retorna o texto original (Fallback)
+            // Estratégia de Fallback: devolve o texto original sem travar a interface
             text
         }
     }
 
+    /**
+     * Converte o padrão de escuta por Callbacks do Task em Coroutines do Kotlin.
+     */
     private suspend fun <T> Task<T>.awaitResult(): T = suspendCancellableCoroutine { continuation ->
         addOnSuccessListener { result ->
             if (continuation.isActive) {
