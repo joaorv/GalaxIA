@@ -348,7 +348,7 @@ private fun HistoryCard(
         if (apod.mediaType == "image") {
             AsyncImage(
                 model = apod.displayImageUrl,
-                contentDescription = apod.alt ?: apod.title,
+                contentDescription = apod.alt ?: apod.displayTitle,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(260.dp)
@@ -364,7 +364,7 @@ private fun HistoryCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "Vídeo do dia (${apod.title})",
+                    text = "Vídeo do dia (${apod.displayTitle})",
                     color = GalaxiaWhite,
                     fontWeight = FontWeight.Medium
                 )
@@ -375,7 +375,7 @@ private fun HistoryCard(
             modifier = Modifier.padding(20.dp)
         ) {
             Text(
-                text = apod.title,
+                text = apod.displayTitle,
                 color = GalaxiaWhite,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold
@@ -426,7 +426,7 @@ private fun HistoryCard(
             Spacer(modifier = Modifier.height(14.dp))
 
             Text(
-                text = apod.cleanExplanation,
+                text = apod.displayExplanation,
                 color = GalaxiaGray,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,

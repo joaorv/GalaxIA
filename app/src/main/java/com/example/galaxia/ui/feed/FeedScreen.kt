@@ -248,7 +248,7 @@ private fun FeedCard(
         if (apod.mediaType == "image" && apod.displayImageUrl.isNotBlank()) {
             AsyncImage(
                 model = apod.displayImageUrl,
-                contentDescription = apod.alt ?: apod.title,
+                contentDescription = apod.alt ?: apod.displayTitle,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(230.dp)
@@ -264,7 +264,7 @@ private fun FeedCard(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = apod.title,
+                    text = apod.displayTitle,
                     color = GalaxiaWhite,
                     fontWeight = FontWeight.Medium
                 )
@@ -295,7 +295,7 @@ private fun FeedCard(
 
             // Título
             Text(
-                text = apod.title,
+                text = apod.displayTitle,
                 color = GalaxiaWhite,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
@@ -325,7 +325,7 @@ private fun FeedCard(
 
             // Texto da Explicação
             Text(
-                text = apod.cleanExplanation,
+                text = apod.displayExplanation,
                 color = GalaxiaGray,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,

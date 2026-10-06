@@ -4,7 +4,7 @@ import androidx.core.text.HtmlCompat
 import com.google.gson.annotations.SerializedName
 
 /**
- * Modelo de dados para a resposta da API APOD da NASA.
+ * Modelo de dados para a resposta da API APOD da NASA com suporte a tradução.
  * Suporta a estrutura da API WordPress da NASA Science (apod-basic).
  */
 data class ApodResponse(
@@ -26,8 +26,23 @@ data class ApodResponse(
     @SerializedName("basic_html_url")
     val basicHtmlUrl: String? = null,
     @SerializedName("service_version")
-    val serviceVersion: String? = "v1"
+    val serviceVersion: String? = "v1",
+    val translatedTitle: String? = null,
+    val translatedExplanation: String? = null,
+    val isTranslated: Boolean = false
 ) : BaseModel {
+
+    /**
+     * Título pronto para exibição (traduzido se disponível, caso contrário o original).
+     */
+    val displayTitle: String
+        get() = if (isTranslated && !translatedTitle.isNullOrBlank()) translatedTitle else title
+
+    /**
+     * Explicação pronta para exibição (traduzida se disponível, caso contrário a versão limpa original).
+     */
+    val displayExplanation: String
+        get() = if (isTranslated && !translatedExplanation.isNullOrBlank()) translatedExplanation else cleanExplanation
 
     /**
      * Retorna a URL direta da imagem para exibição nos cards.

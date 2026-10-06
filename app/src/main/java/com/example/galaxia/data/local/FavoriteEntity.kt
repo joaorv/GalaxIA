@@ -22,15 +22,15 @@ data class FavoriteEntity(
 ) : BaseModel
 
 /**
- * Converte um ApodResponse para a entidade unificada de favoritos.
+ * Converte um ApodResponse para a entidade unificada de favoritos com dados traduzidos.
  */
 fun ApodResponse.toFavoriteEntity(): FavoriteEntity {
     return FavoriteEntity(
         id = "apod_$date",
         itemType = FavoriteType.APOD.name,
-        title = title,
+        title = displayTitle,
         subtitleOrDate = date,
-        explanationOrBody = cleanExplanation,
+        explanationOrBody = displayExplanation,
         imageUrl = displayImageUrl,
         extraUrl = permalink ?: hdurl ?: url,
         mediaType = mediaType,
@@ -49,6 +49,9 @@ fun FavoriteEntity.toApodResponse(): ApodResponse {
         url = imageUrl ?: "",
         hdurl = extraUrl,
         mediaType = mediaType,
-        copyright = authorOrCopyright
+        copyright = authorOrCopyright,
+        translatedTitle = title,
+        translatedExplanation = explanationOrBody,
+        isTranslated = true
     )
 }
