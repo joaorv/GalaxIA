@@ -42,6 +42,7 @@ import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.util.formatDateBr
 
 /**
  * Tela de detalhe de uma notícia/foto, com o conteúdo completo e seta para voltar.
@@ -161,7 +162,7 @@ fun NewsDetailScreen(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = item.subtitleOrDate,
+                            text = formatDateBr(item.subtitleOrDate),
                             color = GalaxiaGray,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium

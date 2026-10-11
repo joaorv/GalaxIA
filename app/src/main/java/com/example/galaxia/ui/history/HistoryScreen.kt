@@ -62,6 +62,7 @@ import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.util.formatDateBr
 import com.example.galaxia.viewmodel.FeedViewModel
 import java.time.Instant
 import java.time.LocalDate
@@ -224,7 +225,7 @@ fun HistoryScreen(
                         CircularProgressIndicator(color = GalaxiaCyan)
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Buscando foto de ${formatShortDate(selectedDateString)}...",
+                            text = "Buscando foto de ${formatDateBr(selectedDateString)}...",
                             color = GalaxiaGray,
                             fontSize = 14.sp
                         )
@@ -401,7 +402,7 @@ private fun HistoryCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = formatShortDate(apod.date),
+                        text = formatDateBr(apod.date),
                         color = GalaxiaGray,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
@@ -501,16 +502,6 @@ private fun formatDisplayDate(dateString: String): String {
         val formatter = DateTimeFormatter.ofPattern("dd 'de' MMMM 'de' yyyy", Locale.forLanguageTag("pt-BR"))
         localDate.format(formatter)
     } catch (_: Exception) {
-        dateString
-    }
-}
-
-private fun formatShortDate(dateString: String): String {
-    return try {
-        val localDate = LocalDate.parse(dateString)
-        val formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-        localDate.format(formatter)
-    } catch (e: Exception) {
         dateString
     }
 }

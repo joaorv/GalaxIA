@@ -36,7 +36,11 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -69,6 +73,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -85,6 +90,7 @@ import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.util.formatDateBr
 import com.example.galaxia.viewmodel.FeedViewModel
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -94,6 +100,7 @@ fun FeedScreen(
 ) {
     val apodState by viewModel.apodState.collectAsState()
     val favoriteIds by viewModel.favoriteIds.collectAsState()
+    val feedFilter by viewModel.feedFilter.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
     var detailTarget by remember { mutableStateOf<DetailTarget?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -176,52 +183,71 @@ fun FeedScreen(
         }
 
         // Conteúdo
-        Box(modifier = Modifier.weight(1f)) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
             when (selectedTab) {
-                0 -> {
-                    when (val state = apodState) {
-                        is FeedViewModel.ApodState.Loading -> {
-                            CircularProgressIndicator(
-                                modifier = Modifier.align(Alignment.Center),
-                                color = GalaxiaCyan
-                            )
-                        }
-                        is FeedViewModel.ApodState.Error -> {
-                            Column(
-                                modifier = Modifier.align(Alignment.Center),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text(
-                                    text = state.message,
-                                    color = Color.Red,
-                                    modifier = Modifier.padding(bottom = 16.dp)
+                0 -> Column(modifier = Modifier.fillMaxSize()) {
+                    FeedFilterRow(
+                        selectedFilter = feedFilter,
+                        isLoading = apodState is FeedViewModel.ApodState.Loading,
+                        onFilterSelected = { viewModel.setFeedFilter(it) }
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    ) {
+                        when (val state = apodState) {
+                            is FeedViewModel.ApodState.Loading -> {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.align(Alignment.Center),
+                                    color = GalaxiaCyan
                                 )
-                                Button(
-                                    onClick = { viewModel.fetchApod() },
-                                    colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+                            }
+                            is FeedViewModel.ApodState.Error -> {
+                                Column(
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .padding(horizontal = 24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Icon(Icons.Default.Refresh, contentDescription = null)
-                                    Spacer(Modifier.size(8.dp))
-                                    Text("Tentar Novamente", color = GalaxiaBackground)
+                                    Text(
+                                        text = state.message,
+                                        color = Color.Red,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.padding(bottom = 16.dp)
+                                    )
+                                    Button(
+                                        onClick = { viewModel.fetchApod() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null)
+                                        Spacer(Modifier.size(8.dp))
+                                        Text("Tentar Novamente", color = GalaxiaBackground)
+                                    }
                                 }
                             }
-                        }
-                        is FeedViewModel.ApodState.Success -> {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(20.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                items(
-                                    items = state.apods,
-                                    key = { it.date }
-                                ) { item ->
-                                    FeedCard(
-                                        apod = item,
-                                        isFavorite = "apod_${item.date}" in favoriteIds,
-                                        onToggleFavorite = { viewModel.toggleFavoriteApod(item) },
-                                        onClick = { detailTarget = DetailTarget(item.toFavoriteEntity(), item) }
-                                    )
+                            is FeedViewModel.ApodState.Success -> {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 20.dp),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    items(
+                                        items = state.apods,
+                                        key = { it.date }
+                                    ) { item ->
+                                        FeedCard(
+                                            apod = item,
+                                            isFavorite = "apod_${item.date}" in favoriteIds,
+                                            onToggleFavorite = { viewModel.toggleFavoriteApod(item) },
+                                            onClick = { detailTarget = DetailTarget(item.toFavoriteEntity(), item) }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -296,6 +322,65 @@ private data class DetailTarget(
 )
 
 @Composable
+private fun FeedFilterRow(
+    selectedFilter: FeedViewModel.FeedFilter,
+    isLoading: Boolean,
+    onFilterSelected: (FeedViewModel.FeedFilter) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 12.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FeedViewModel.FeedFilter.entries.forEach { filter ->
+            FilterChip(
+                selected = filter == selectedFilter,
+                onClick = { onFilterSelected(filter) },
+                label = { Text(filter.label) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = when (filter) {
+                            FeedViewModel.FeedFilter.LATEST -> Icons.Default.Schedule
+                            FeedViewModel.FeedFilter.RANDOM -> Icons.Default.Shuffle
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = GalaxiaCardBackground,
+                    labelColor = GalaxiaGray,
+                    iconColor = GalaxiaGray,
+                    selectedContainerColor = GalaxiaCyan,
+                    selectedLabelColor = GalaxiaBackground,
+                    selectedLeadingIconColor = GalaxiaBackground
+                ),
+                border = null,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.padding(end = 8.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // No modo aleatório, permite sortear um novo conjunto de fotos
+        if (selectedFilter == FeedViewModel.FeedFilter.RANDOM) {
+            IconButton(
+                onClick = { onFilterSelected(FeedViewModel.FeedFilter.RANDOM) },
+                enabled = !isLoading
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Sortear outras fotos",
+                    tint = if (isLoading) GalaxiaGray else GalaxiaCyan
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun FeedCard(
     apod: ApodResponse,
     isFavorite: Boolean = false,
@@ -352,7 +437,7 @@ private fun FeedCard(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = apod.date,
+                    text = formatDateBr(apod.date),
                     color = GalaxiaGray,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium

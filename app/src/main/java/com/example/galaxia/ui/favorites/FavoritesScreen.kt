@@ -65,6 +65,7 @@ import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.util.formatDateBr
 import com.example.galaxia.viewmodel.FeedViewModel
 
 @Composable
@@ -364,7 +365,7 @@ private fun FavoriteCard(
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = favorite.subtitleOrDate,
+                        text = formatDateBr(favorite.subtitleOrDate),
                         color = GalaxiaGray,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Medium

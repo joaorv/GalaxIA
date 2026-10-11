@@ -8,6 +8,7 @@ import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.data.model.ApodResponse
 import com.example.galaxia.repository.ApodRepository
 import com.example.galaxia.repository.FavoriteRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -35,6 +36,11 @@ class FeedViewModel(
     // --- Estados do Feed e Histórico (NASA APOD) ---
     private val _apodState = MutableStateFlow<ApodState>(ApodState.Loading)
     val apodState: StateFlow<ApodState> = _apodState
+
+    private val _feedFilter = MutableStateFlow(FeedFilter.LATEST)
+    val feedFilter: StateFlow<FeedFilter> = _feedFilter.asStateFlow()
+
+    private var fetchApodJob: Job? = null
 
     private val _historySelectedDate = MutableStateFlow(LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
     val historySelectedDate: StateFlow<String> = _historySelectedDate
@@ -180,14 +186,31 @@ class FeedViewModel(
 
     // --- Ações da API NASA APOD ---
 
+    /**
+     * Troca o filtro do feed e recarrega. Selecionar "Aleatórias" de novo sorteia outras fotos.
+     */
+    fun setFeedFilter(filter: FeedFilter) {
+        if (filter == _feedFilter.value && filter == FeedFilter.LATEST) return
+        _feedFilter.value = filter
+        fetchApod()
+    }
+
     fun fetchApod() {
-        viewModelScope.launch {
-            Log.d("FeedViewModel", "Iniciando fetchApod...")
+        // Cancela uma busca anterior para que o resultado de outro filtro não sobrescreva o atual
+        fetchApodJob?.cancel()
+        fetchApodJob = viewModelScope.launch {
+            val filter = _feedFilter.value
+            Log.d("FeedViewModel", "Iniciando fetchApod ($filter)...")
             _apodState.value = ApodState.Loading
             try {
-                val response = apodRepository.getApodList()
+                val response = when (filter) {
+                    FeedFilter.LATEST -> apodRepository.getApodList()
+                    FeedFilter.RANDOM -> apodRepository.getRandomApods()
+                }
                 Log.d("FeedViewModel", "Sucesso: ${response.size} itens recebidos")
                 _apodState.value = ApodState.Success(response)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: HttpException) {
                 val errorMsg = when (e.code()) {
                     403 -> "Chave de API inválida ou expirada."
@@ -248,6 +271,11 @@ class FeedViewModel(
                 _historyState.value = HistoryState.Error("Ocorreu um erro inesperado: ${e.message}")
             }
         }
+    }
+
+    enum class FeedFilter(val label: String) {
+        LATEST("Últimas"),
+        RANDOM("Aleatórias")
     }
 
     sealed class ApodState {
