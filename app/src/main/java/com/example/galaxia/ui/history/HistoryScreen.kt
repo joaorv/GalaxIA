@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -72,7 +73,8 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
-    viewModel: FeedViewModel
+    viewModel: FeedViewModel,
+    onOpenDetail: (ApodResponse) -> Unit = {}
 ) {
     val selectedDateString by viewModel.historySelectedDate.collectAsState()
     val historyState by viewModel.historyState.collectAsState()
@@ -263,7 +265,8 @@ fun HistoryScreen(
                 HistoryCard(
                     apod = state.apod,
                     isFavorite = "apod_${state.apod.date}" in favoriteIds,
-                    onToggleFavorite = { viewModel.toggleFavoriteApod(state.apod) }
+                    onToggleFavorite = { viewModel.toggleFavoriteApod(state.apod) },
+                    onClick = { onOpenDetail(state.apod) }
                 )
             }
         }
@@ -334,9 +337,9 @@ fun HistoryScreen(
 private fun HistoryCard(
     apod: ApodResponse,
     isFavorite: Boolean = false,
-    onToggleFavorite: () -> Unit = {}
+    onToggleFavorite: () -> Unit = {},
+    onClick: () -> Unit = {}
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
     Column(
@@ -344,6 +347,7 @@ private fun HistoryCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(GalaxiaCardBackground)
+            .clickable(onClick = onClick)
     ) {
         if (apod.mediaType == "image") {
             AsyncImage(
@@ -430,55 +434,42 @@ private fun HistoryCard(
                 color = GalaxiaGray,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
-                maxLines = if (expanded) Int.MAX_VALUE else 5
+                maxLines = 5,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onToggleFavorite
-                    ) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
-                            tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-
-                    apod.hdurl?.let { hdurl ->
-                        IconButton(
-                            onClick = {
-                                try {
-                                    uriHandler.openUri(hdurl)
-                                } catch (_: Exception) {
-                                    // Tratar se a URI falhar
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = "Abrir HD",
-                                tint = GalaxiaCyan,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onToggleFavorite
+                ) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
+                        tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
+                        modifier = Modifier.size(26.dp)
+                    )
                 }
 
-                Text(
-                    text = if (expanded) "MOSTRAR MENOS" else "LER MAIS →",
-                    color = GalaxiaCyan,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { expanded = !expanded }
-                )
+                apod.hdurl?.let { hdurl ->
+                    IconButton(
+                        onClick = {
+                            try {
+                                uriHandler.openUri(hdurl)
+                            } catch (_: Exception) {
+                                // Tratar se a URI falhar
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Abrir HD",
+                            tint = GalaxiaCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
         }
     }

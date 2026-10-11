@@ -1,8 +1,16 @@
 package com.example.galaxia.ui.feed
 
+import com.example.galaxia.ui.detail.NewsDetailScreen
 import com.example.galaxia.ui.history.HistoryScreen
 import com.example.galaxia.ui.favorites.FavoritesScreen
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,11 +69,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.AsyncImage
+import com.example.galaxia.data.local.FavoriteEntity
+import com.example.galaxia.data.local.FavoriteType
+import com.example.galaxia.data.local.toApodResponse
+import com.example.galaxia.data.local.toFavoriteEntity
 import com.example.galaxia.data.model.ApodResponse
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
@@ -82,7 +95,13 @@ fun FeedScreen(
     val apodState by viewModel.apodState.collectAsState()
     val favoriteIds by viewModel.favoriteIds.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
+    var detailTarget by remember { mutableStateOf<DetailTarget?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Seta "voltar" do sistema fecha o detalhe antes de sair do app
+    BackHandler(enabled = detailTarget != null) {
+        detailTarget = null
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.userMessage.collectLatest { message ->
@@ -114,6 +133,8 @@ fun FeedScreen(
         },
         containerColor = GalaxiaBackground
     ) { innerPadding ->
+      // A lista continua composta por baixo do detalhe para preservar a posição de rolagem
+      Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -198,7 +219,8 @@ fun FeedScreen(
                                     FeedCard(
                                         apod = item,
                                         isFavorite = "apod_${item.date}" in favoriteIds,
-                                        onToggleFavorite = { viewModel.toggleFavoriteApod(item) }
+                                        onToggleFavorite = { viewModel.toggleFavoriteApod(item) },
+                                        onClick = { detailTarget = DetailTarget(item.toFavoriteEntity(), item) }
                                     )
                                 }
                             }
@@ -207,12 +229,18 @@ fun FeedScreen(
                 }
                 1 -> {
                     HistoryScreen(
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        onOpenDetail = { apod ->
+                            detailTarget = DetailTarget(apod.toFavoriteEntity(), apod)
+                        }
                     )
                 }
                 2 -> {
                     FavoritesScreen(
-                        viewModel = viewModel
+                        viewModel = viewModel,
+                        onOpenDetail = { favorite ->
+                            detailTarget = DetailTarget(favorite)
+                        }
                     )
                 }
             }
@@ -224,16 +252,56 @@ fun FeedScreen(
             onTabSelected = { selectedTab = it }
         )
     }
+
+        // Tela de detalhe da notícia, sobreposta com animação de deslize
+        AnimatedContent(
+            targetState = detailTarget,
+            transitionSpec = {
+                if (targetState != null) {
+                    (slideInHorizontally { it } + fadeIn()) togetherWith fadeOut()
+                } else {
+                    fadeIn() togetherWith (slideOutHorizontally { it } + fadeOut())
+                }
+            },
+            label = "NewsDetailTransition"
+        ) { target ->
+            if (target != null) {
+                NewsDetailScreen(
+                    item = target.item,
+                    isFavorite = target.item.id in favoriteIds,
+                    onToggleFavorite = {
+                        when {
+                            target.apod != null -> viewModel.toggleFavoriteApod(target.apod)
+                            target.item.itemType == FavoriteType.APOD.name ->
+                                viewModel.toggleFavoriteApod(target.item.toApodResponse())
+                            target.item.id in favoriteIds -> viewModel.removeFavoriteById(target.item.id)
+                        }
+                    },
+                    onBack = { detailTarget = null },
+                    modifier = Modifier.padding(innerPadding)
+                )
+            }
+        }
+      }
 }
 }
+
+/**
+ * Item aberto na tela de detalhe. [apod] fica disponível quando o item veio do
+ * Feed/Histórico, para que o favorito seja salvo com os dados originais da API.
+ */
+private data class DetailTarget(
+    val item: FavoriteEntity,
+    val apod: ApodResponse? = null
+)
 
 @Composable
 private fun FeedCard(
     apod: ApodResponse,
     isFavorite: Boolean = false,
-    onToggleFavorite: () -> Unit = {}
+    onToggleFavorite: () -> Unit = {},
+    onClick: () -> Unit = {}
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
     Column(
@@ -241,7 +309,7 @@ private fun FeedCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(GalaxiaCardBackground)
-            .clickable { expanded = !expanded }
+            .clickable(onClick = onClick)
     ) {
 
         // Imagem ou Placeholder de Vídeo
@@ -329,53 +397,40 @@ private fun FeedCard(
                 color = GalaxiaGray,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
-                maxLines = if (expanded) Int.MAX_VALUE else 3
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Ações: Botão de Favorito, Link NASA e Expandir
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onToggleFavorite) {
-                        Icon(
-                            imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                            contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
-                            tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    val targetUrl = apod.permalink ?: apod.url
-                    if (targetUrl.isNotBlank()) {
-                        IconButton(
-                            onClick = {
-                                try {
-                                    uriHandler.openUri(targetUrl)
-                                } catch (_: Exception) {}
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = "Abrir no site da NASA",
-                                tint = GalaxiaCyan,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
+            // Ações: Botão de Favorito e Link NASA
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
+                        tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
 
-                Text(
-                    text = if (expanded) "MOSTRAR MENOS" else "LER MAIS →",
-                    color = GalaxiaCyan,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { expanded = !expanded }
-                )
+                val targetUrl = apod.permalink ?: apod.url
+                if (targetUrl.isNotBlank()) {
+                    IconButton(
+                        onClick = {
+                            try {
+                                uriHandler.openUri(targetUrl)
+                            } catch (_: Exception) {}
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Abrir no site da NASA",
+                            tint = GalaxiaCyan,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
             }
         }
     }

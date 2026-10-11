@@ -45,9 +45,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -71,7 +69,8 @@ import com.example.galaxia.viewmodel.FeedViewModel
 
 @Composable
 fun FavoritesScreen(
-    viewModel: FeedViewModel
+    viewModel: FeedViewModel,
+    onOpenDetail: (FavoriteEntity) -> Unit = {}
 ) {
     val favorites by viewModel.filteredFavorites.collectAsState()
     val selectedFilter by viewModel.selectedFavoriteFilter.collectAsState()
@@ -274,7 +273,8 @@ fun FavoritesScreen(
                         ) { item ->
                             FavoriteCard(
                                 favorite = item,
-                                onRemoveFavorite = { viewModel.removeFavoriteById(item.id) }
+                                onRemoveFavorite = { viewModel.removeFavoriteById(item.id) },
+                                onClick = { onOpenDetail(item) }
                             )
                         }
                     }
@@ -287,9 +287,9 @@ fun FavoritesScreen(
 @Composable
 private fun FavoriteCard(
     favorite: FavoriteEntity,
-    onRemoveFavorite: () -> Unit
+    onRemoveFavorite: () -> Unit,
+    onClick: () -> Unit = {}
 ) {
-    var expanded by remember { mutableStateOf(false) }
     val uriHandler = LocalUriHandler.current
 
     Column(
@@ -297,7 +297,7 @@ private fun FavoriteCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
             .background(GalaxiaCardBackground)
-            .clickable { expanded = !expanded }
+            .clickable(onClick = onClick)
     ) {
         // Imagem ou Placeholder de Vídeo
         if (favorite.mediaType == "image" && !favorite.imageUrl.isNullOrBlank()) {
@@ -409,52 +409,39 @@ private fun FavoriteCard(
                 color = GalaxiaGray,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
-                maxLines = if (expanded) Int.MAX_VALUE else 3
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
             // Ações: Botão de Remover dos Favoritos e Link HD
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onRemoveFavorite) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "Remover dos favoritos",
-                            tint = GalaxiaCyan,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-
-                    favorite.extraUrl?.let { extraUrl ->
-                        IconButton(
-                            onClick = {
-                                try {
-                                    uriHandler.openUri(extraUrl)
-                                } catch (_: Exception) {}
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = "Abrir original em HD",
-                                tint = GalaxiaCyan,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-                    }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onRemoveFavorite) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "Remover dos favoritos",
+                        tint = GalaxiaCyan,
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
 
-                Text(
-                    text = if (expanded) "MOSTRAR MENOS" else "LER MAIS →",
-                    color = GalaxiaCyan,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { expanded = !expanded }
-                )
+                favorite.extraUrl?.let { extraUrl ->
+                    IconButton(
+                        onClick = {
+                            try {
+                                uriHandler.openUri(extraUrl)
+                            } catch (_: Exception) {}
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Abrir original em HD",
+                            tint = GalaxiaCyan,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
             }
         }
     }
