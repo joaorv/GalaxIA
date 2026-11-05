@@ -55,7 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
+import com.example.galaxia.ui.components.OptimizedAsyncImage
 import com.example.galaxia.data.model.ApodResponse
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
@@ -351,8 +351,9 @@ private fun HistoryCard(
             .clickable(onClick = onClick)
     ) {
         if (apod.mediaType == "image") {
-            AsyncImage(
-                model = apod.displayImageUrl,
+            OptimizedAsyncImage(
+                lowResUrl = apod.lowResImageUrl,
+                highResUrl = apod.highResImageUrl,
                 contentDescription = apod.alt ?: apod.displayTitle,
                 modifier = Modifier
                     .fillMaxWidth()

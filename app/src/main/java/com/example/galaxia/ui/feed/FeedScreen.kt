@@ -79,7 +79,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil3.compose.AsyncImage
+import com.example.galaxia.ui.components.OptimizedAsyncImage
 import com.example.galaxia.data.local.FavoriteEntity
 import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.data.local.toApodResponse
@@ -399,8 +399,9 @@ private fun FeedCard(
 
         // Imagem ou Placeholder de Vídeo
         if (apod.mediaType == "image" && apod.displayImageUrl.isNotBlank()) {
-            AsyncImage(
-                model = apod.displayImageUrl,
+            OptimizedAsyncImage(
+                lowResUrl = apod.lowResImageUrl,
+                highResUrl = apod.highResImageUrl,
                 contentDescription = apod.alt ?: apod.displayTitle,
                 modifier = Modifier
                     .fillMaxWidth()

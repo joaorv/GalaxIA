@@ -16,10 +16,28 @@ data class FavoriteEntity(
     val explanationOrBody: String,
     val imageUrl: String?,
     val extraUrl: String? = null,
+    val hdUrl: String? = null,
     val mediaType: String = "image",
     val authorOrCopyright: String? = null,
     val savedAtTimestamp: Long = System.currentTimeMillis()
 ) : BaseModel
+
+/**
+ * Retorna a URL HD se disponível e diferente da imagem padrão.
+ */
+val FavoriteEntity.displayHdUrl: String?
+    get() {
+        val candidate = hdUrl ?: extraUrl?.takeIf {
+            it != imageUrl && (
+                it.endsWith(".jpg", ignoreCase = true) ||
+                it.endsWith(".png", ignoreCase = true) ||
+                it.endsWith(".jpeg", ignoreCase = true) ||
+                it.endsWith(".webp", ignoreCase = true) ||
+                it.contains("/apod/image/", ignoreCase = true)
+            )
+        }
+        return candidate?.takeIf { it.isNotBlank() && it != imageUrl }
+    }
 
 /**
  * Converte um ApodResponse para a entidade unificada de favoritos com dados traduzidos.
@@ -33,6 +51,7 @@ fun ApodResponse.toFavoriteEntity(): FavoriteEntity {
         explanationOrBody = displayExplanation,
         imageUrl = displayImageUrl,
         extraUrl = permalink ?: hdurl ?: url,
+        hdUrl = hdurl,
         mediaType = mediaType,
         authorOrCopyright = author
     )
@@ -47,7 +66,7 @@ fun FavoriteEntity.toApodResponse(): ApodResponse {
         title = title,
         explanation = explanationOrBody,
         url = imageUrl ?: "",
-        hdurl = extraUrl,
+        hdurl = hdUrl ?: extraUrl,
         mediaType = mediaType,
         copyright = authorOrCopyright,
         translatedTitle = title,

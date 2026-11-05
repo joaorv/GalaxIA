@@ -35,8 +35,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
+import com.example.galaxia.ui.components.OptimizedAsyncImage
 import com.example.galaxia.data.local.FavoriteEntity
+import com.example.galaxia.data.local.displayHdUrl
 import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
@@ -125,8 +126,9 @@ fun NewsDetailScreen(
             ) {
                 // Imagem ou Placeholder de Vídeo
                 if (item.mediaType == "image" && !item.imageUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = item.imageUrl,
+                    OptimizedAsyncImage(
+                        lowResUrl = item.imageUrl,
+                        highResUrl = item.displayHdUrl,
                         contentDescription = item.title,
                         modifier = Modifier
                             .fillMaxWidth()

@@ -56,8 +56,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
+import com.example.galaxia.ui.components.OptimizedAsyncImage
 import com.example.galaxia.data.local.FavoriteEntity
+import com.example.galaxia.data.local.displayHdUrl
 import com.example.galaxia.data.local.FavoriteSortOrder
 import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.ui.theme.GalaxiaBackground
@@ -302,8 +303,9 @@ private fun FavoriteCard(
     ) {
         // Imagem ou Placeholder de Vídeo
         if (favorite.mediaType == "image" && !favorite.imageUrl.isNullOrBlank()) {
-            AsyncImage(
-                model = favorite.imageUrl,
+            OptimizedAsyncImage(
+                lowResUrl = favorite.imageUrl,
+                highResUrl = favorite.displayHdUrl,
                 contentDescription = favorite.title,
                 modifier = Modifier
                     .fillMaxWidth()

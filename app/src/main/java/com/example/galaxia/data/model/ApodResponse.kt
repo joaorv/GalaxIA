@@ -68,6 +68,18 @@ data class ApodResponse(
         }
 
     /**
+     * Retorna a URL da imagem de menor resolução (não HD) para pré-carregamento rápido.
+     */
+    val lowResImageUrl: String
+        get() = displayImageUrl
+
+    /**
+     * Retorna a URL da imagem em alta definição (HD), se disponível e diferente da imagem não HD.
+     */
+    val highResImageUrl: String?
+        get() = hdurl?.takeIf { it.isNotBlank() && it != displayImageUrl }
+
+    /**
      * Retorna o autor, copyright ou crédito do item APOD sem tags HTML.
      */
     val author: String?
