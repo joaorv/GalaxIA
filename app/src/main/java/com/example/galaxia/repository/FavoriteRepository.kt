@@ -45,19 +45,13 @@ class FavoriteRepository(
      * Alterna o estado de favorito de um APOD.
      * @return true se foi adicionado aos favoritos, false se foi removido.
      */
-    suspend fun toggleFavoriteApod(apod: ApodResponse, isCurrentlyFavorite: Boolean): Boolean =
-        toggleFavorite(apod.toFavoriteEntity(), isCurrentlyFavorite)
-
-    /**
-     * Alterna o estado de favorito de qualquer item (foto, notícia ou curiosidade).
-     * @return true se foi adicionado aos favoritos, false se foi removido.
-     */
-    suspend fun toggleFavorite(favorite: FavoriteEntity, isCurrentlyFavorite: Boolean): Boolean {
+    suspend fun toggleFavoriteApod(apod: ApodResponse, isCurrentlyFavorite: Boolean): Boolean {
+        val favoriteId = "apod_${apod.date}"
         return if (isCurrentlyFavorite) {
-            dataSource.deleteFavoriteById(favorite.id)
+            dataSource.deleteFavoriteById(favoriteId)
             false
         } else {
-            dataSource.insertFavorite(favorite)
+            dataSource.insertFavorite(apod.toFavoriteEntity())
             true
         }
     }

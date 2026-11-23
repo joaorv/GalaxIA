@@ -59,7 +59,6 @@ import androidx.compose.ui.unit.sp
 import com.example.galaxia.ui.components.OptimizedAsyncImage
 import com.example.galaxia.data.local.FavoriteEntity
 import com.example.galaxia.data.local.displayHdUrl
-import com.example.galaxia.data.local.isTextOnly
 import com.example.galaxia.data.local.FavoriteSortOrder
 import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.ui.theme.GalaxiaBackground
@@ -314,7 +313,7 @@ private fun FavoriteCard(
                     .background(Color(0xFF161822)),
                 contentScale = ContentScale.Crop
             )
-        } else if (!favorite.isTextOnly) {
+        } else {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -7,7 +7,7 @@ import com.example.galaxia.data.model.SiteSearchResult
 import com.example.galaxia.data.remote.ApiService
 import com.example.galaxia.data.remote.ApodMockData
 import com.example.galaxia.data.remote.RetrofitClient
-import com.example.galaxia.data.translation.MlKitTranslationService
+import com.example.galaxia.data.translation.AppTranslation
 import com.example.galaxia.data.translation.TranslationService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -25,7 +25,7 @@ import kotlin.random.Random
  */
 class ApodRepository(
     private val apiService: ApiService = RetrofitClient.apiService,
-    private val translationService: TranslationService = MlKitTranslationService()
+    private val translationService: TranslationService = AppTranslation.service
 ) : BaseRepository {
 
     // Cache em memória para otimizar e evitar re-traduções do mesmo item durante a execução
@@ -37,16 +37,19 @@ class ApodRepository(
 
     // --- Remoto (NASA APOD + Tradução Automática + Fallback de Contingência) ---
 
+    /** Últimas fotos já traduzidas. */
     suspend fun getApodList(count: Int = 10): List<ApodResponse> = coroutineScope {
-        try {
-            val originalList = apiService.getApodList(perPage = count)
+        fetchLatestApods(count).map { async { translateApod(it) } }.awaitAll()
+    }
 
-            // Traduz os itens em paralelo utilizando corrotinas
-            originalList.map { apod ->
-                async {
-                    translateApod(apod)
-                }
-            }.awaitAll()
+    /**
+     * Últimas fotos como vêm da API, sem traduzir. A tradução no aparelho é a parte lenta
+     * do carregamento, então o feed busca primeiro e traduz depois, na ordem em que os
+     * itens aparecem na tela (veja [translateApod] e [translateTitle]).
+     */
+    suspend fun fetchLatestApods(count: Int = 10): List<ApodResponse> {
+        return try {
+            apiService.getApodList(perPage = count)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -62,6 +65,11 @@ class ApodRepository(
      * sorteada com 'per_page=1', usando o total informado no cabeçalho X-WP-Total.
      */
     suspend fun getRandomApods(count: Int = 10): List<ApodResponse> = coroutineScope {
+        fetchRandomApods(count).map { async { translateApod(it) } }.awaitAll()
+    }
+
+    /** Mesmo sorteio de [getRandomApods], sem traduzir. */
+    suspend fun fetchRandomApods(count: Int = 10): List<ApodResponse> = coroutineScope {
         try {
             val total = totalApods ?: fetchTotalApods().also { totalApods = it }
             val pages = generateSequence { Random.nextInt(1, total + 1) }
@@ -73,9 +81,7 @@ class ApodRepository(
                 async {
                     // Uma página que falhar não derruba as demais
                     try {
-                        apiService.getApodList(perPage = 1, page = page)
-                            .firstOrNull()
-                            ?.let { translateApod(it) }
+                        apiService.getApodList(perPage = 1, page = page).firstOrNull()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
@@ -198,7 +204,9 @@ class ApodRepository(
         return translateApod(full)
     }
 
-    private suspend fun translateApod(apod: ApodResponse): ApodResponse {
+    /** Traduz título e explicação. Itens já traduzidos por completo (ex.: dados de contingência) voltam como estão. */
+    suspend fun translateApod(apod: ApodResponse): ApodResponse {
+        if (apod.isTranslated && !apod.translatedExplanation.isNullOrBlank()) return apod
         val cacheKey = if (apod.date.isNotBlank()) apod.date else apod.title
         translationCache[cacheKey]?.let { (translatedTitle, translatedExplanation) ->
             return apod.copy(
@@ -219,9 +227,26 @@ class ApodRepository(
                 translatedExplanation = explanationPt,
                 isTranslated = true
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             // Em caso de falha de tradução, mantém o item original com fallback transparente
             apod.copy(isTranslated = false)
+        }
+    }
+
+    /**
+     * Traduz só o título (rápido), para o card aparecer em português enquanto a
+     * explicação é traduzida em segundo plano. Até lá, o card mostra a explicação original.
+     */
+    suspend fun translateTitle(apod: ApodResponse): ApodResponse {
+        if (apod.isTranslated && !apod.translatedTitle.isNullOrBlank()) return apod
+        return try {
+            apod.copy(translatedTitle = translationService.translateText(apod.title), isTranslated = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            apod
         }
     }
 

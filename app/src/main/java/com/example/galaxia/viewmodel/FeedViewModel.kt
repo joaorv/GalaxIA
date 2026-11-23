@@ -5,14 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.galaxia.data.local.FavoriteEntity
 import com.example.galaxia.data.local.FavoriteSortOrder
 import com.example.galaxia.data.local.FavoriteType
-import com.example.galaxia.data.local.toFavoriteEntity
 import com.example.galaxia.data.model.ApodResponse
-import com.example.galaxia.data.model.SpaceHighlight
 import com.example.galaxia.repository.ApodRepository
 import com.example.galaxia.repository.FavoriteRepository
-import com.example.galaxia.repository.SpaceHighlightsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,20 +33,12 @@ import java.time.format.DateTimeFormatter
 
 class FeedViewModel(
     private val apodRepository: ApodRepository = ApodRepository(),
-    private val favoriteRepository: FavoriteRepository = FavoriteRepository(),
-    private val highlightsRepository: SpaceHighlightsRepository = SpaceHighlightsRepository()
+    private val favoriteRepository: FavoriteRepository = FavoriteRepository()
 ) : BaseViewModel() {
 
     // --- Estados do Feed e Histórico (NASA APOD) ---
     private val _apodState = MutableStateFlow<ApodState>(ApodState.Loading)
     val apodState: StateFlow<ApodState> = _apodState
-
-    // --- Notícias (DONKI) e curiosidades (NeoWs) intercaladas no feed ---
-    // Carregam em paralelo às fotos; se falharem, o feed mostra só as fotos.
-    private val _highlights = MutableStateFlow<List<SpaceHighlight>>(emptyList())
-    val highlights: StateFlow<List<SpaceHighlight>> = _highlights.asStateFlow()
-
-    private var highlightsJob: Job? = null
 
     private val _feedFilter = MutableStateFlow(FeedFilter.LATEST)
     val feedFilter: StateFlow<FeedFilter> = _feedFilter.asStateFlow()
@@ -183,45 +175,11 @@ class FeedViewModel(
         }
     }
 
-    fun toggleFavoriteHighlight(highlight: SpaceHighlight) {
-        toggleFavorite(highlight.toFavoriteEntity())
-    }
-
-    /**
-     * Alterna o favorito de qualquer item já convertido para a entidade unificada
-     * (usado pelas notícias, curiosidades e pela tela de detalhe).
-     */
-    fun toggleFavorite(favorite: FavoriteEntity) {
-        viewModelScope.launch {
-            try {
-                val isCurrentlyFavorite = favorite.id in _favoriteIds.value
-                val added = favoriteRepository.toggleFavorite(favorite, isCurrentlyFavorite)
-                val label = when (favorite.itemType) {
-                    FavoriteType.NEWS.name -> "Notícia adicionada" to "Notícia removida"
-                    FavoriteType.CURIOSITY.name -> "Curiosidade adicionada" to "Curiosidade removida"
-                    else -> "Foto adicionada" to "Foto removida"
-                }
-                _userMessage.emit(
-                    if (added) "${label.first} aos favoritos" else "${label.second} dos favoritos"
-                )
-            } catch (e: Exception) {
-                Log.e("FeedViewModel", "Erro ao alternar favorito: ${favorite.id}", e)
-                _userMessage.emit("Erro ao atualizar favoritos")
-            }
-        }
-    }
-
     fun removeFavoriteById(id: String) {
         viewModelScope.launch {
             try {
-                val itemType = _allFavorites.value.firstOrNull { it.id == id }?.itemType
                 favoriteRepository.removeFavoriteById(id)
-                val label = when (itemType) {
-                    FavoriteType.NEWS.name -> "Notícia"
-                    FavoriteType.CURIOSITY.name -> "Curiosidade"
-                    else -> "Foto"
-                }
-                _userMessage.emit("$label removida dos favoritos")
+                _userMessage.emit("Foto removida dos favoritos")
             } catch (e: Exception) {
                 Log.e("FeedViewModel", "Erro ao remover favorito por id: $id", e)
                 _userMessage.emit("Erro ao remover favorito")
@@ -241,28 +199,13 @@ class FeedViewModel(
     }
 
     /**
-     * Busca notícias e curiosidades. O repositório mantém cache de 30 min, então chamar
-     * a cada recarga do feed só vai à rede quando o cache expirou ou a busca anterior falhou.
+     * Carrega o feed em etapas, porque a tradução no aparelho é lenta (um texto por vez):
+     * 1. busca as fotos na API (rápido);
+     * 2. traduz por completo as primeiras fotos e só o título das demais, e mostra o feed;
+     * 3. traduz o restante das explicações em segundo plano.
+     * As traduções ficam em cache em disco, então nas próximas aberturas tudo isso é imediato.
      */
-    fun loadHighlights() {
-        if (highlightsJob?.isActive == true) return
-        highlightsJob = viewModelScope.launch {
-            try {
-                val result = highlightsRepository.getHighlights()
-                // Se a nova busca falhar (lista vazia), mantém os destaques que já estavam na tela
-                if (result.isNotEmpty()) _highlights.value = result
-                Log.d("FeedViewModel", "Destaques carregados: ${result.size}")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Conteúdo complementar: uma falha aqui não deve virar erro na tela
-                Log.w("FeedViewModel", "Falha ao carregar notícias/curiosidades", e)
-            }
-        }
-    }
-
     fun fetchApod() {
-        loadHighlights()
         // Cancela uma busca anterior para que o resultado de outro filtro não sobrescreva o atual
         fetchApodJob?.cancel()
         fetchApodJob = viewModelScope.launch {
@@ -270,12 +213,25 @@ class FeedViewModel(
             Log.d("FeedViewModel", "Iniciando fetchApod ($filter)...")
             _apodState.value = ApodState.Loading
             try {
-                val response = when (filter) {
-                    FeedFilter.LATEST -> apodRepository.getApodList()
-                    FeedFilter.RANDOM -> apodRepository.getRandomApods()
+                val originals = when (filter) {
+                    FeedFilter.LATEST -> apodRepository.fetchLatestApods()
+                    FeedFilter.RANDOM -> apodRepository.fetchRandomApods()
                 }
-                Log.d("FeedViewModel", "Sucesso: ${response.size} itens recebidos")
-                _apodState.value = ApodState.Success(response)
+
+                // Primeiro o que aparece na tela: texto completo das primeiras fotos, uma de cada vez
+                val visible = originals.take(FULLY_TRANSLATED_BEFORE_SHOWING)
+                    .map { apodRepository.translateApod(it) }
+                // Das demais, só o título (curto) antes de mostrar
+                val others = coroutineScope {
+                    originals.drop(FULLY_TRANSLATED_BEFORE_SHOWING)
+                        .map { async { apodRepository.translateTitle(it) } }
+                        .awaitAll()
+                }
+
+                Log.d("FeedViewModel", "Sucesso: ${originals.size} itens recebidos")
+                _apodState.value = ApodState.Success(visible + others)
+
+                translateRemainingExplanations(others)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: HttpException) {
@@ -299,6 +255,20 @@ class FeedViewModel(
                 Log.e("FeedViewModel", "Erro inesperado", e)
                 _apodState.value = ApodState.Error("Ocorreu um erro inesperado: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Traduz as explicações que ficaram para depois, na ordem do feed, trocando cada card
+     * assim que a tradução fica pronta. É cancelada junto com o carregamento se o filtro mudar.
+     */
+    private suspend fun translateRemainingExplanations(pending: List<ApodResponse>) {
+        pending.forEach { partial ->
+            val translated = apodRepository.translateApod(partial)
+            val current = _apodState.value as? ApodState.Success ?: return
+            _apodState.value = ApodState.Success(
+                current.apods.map { if (it.date == translated.date) translated else it }
+            )
         }
     }
 
@@ -343,6 +313,11 @@ class FeedViewModel(
     enum class FeedFilter(val label: String) {
         LATEST("Últimas"),
         RANDOM("Aleatórias")
+    }
+
+    private companion object {
+        /** Fotos traduzidas por completo antes de o feed aparecer (as que cabem na primeira tela). */
+        const val FULLY_TRANSLATED_BEFORE_SHOWING = 2
     }
 
     sealed class ApodState {

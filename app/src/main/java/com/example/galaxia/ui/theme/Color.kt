@@ -16,6 +16,3 @@ val GalaxiaCardBackground = Color(0xFF0D0E13)
 val GalaxiaCyan = Color(0xFF00B8E6)
 val GalaxiaWhite = Color(0xFFF5F5F5)
 val GalaxiaGray = Color(0xFF9A9AA2)
-// Destaques do feed: notícias de clima espacial (tom solar) e alerta de asteroide perigoso
-val GalaxiaNewsAccent = Color(0xFFFFB547)
-val GalaxiaWarning = Color(0xFFFF6B5E)
