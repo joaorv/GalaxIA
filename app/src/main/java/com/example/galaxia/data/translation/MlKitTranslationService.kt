@@ -3,7 +3,9 @@ package com.example.galaxia.data.translation
 import com.google.android.gms.tasks.Task
 import com.google.mlkit.nl.translate.TranslateLanguage
 import com.google.mlkit.nl.translate.Translation
+import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -14,19 +16,30 @@ import kotlin.coroutines.resumeWithException
  */
 class MlKitTranslationService : TranslationService {
 
-    private val options = TranslatorOptions.Builder()
-        .setSourceLanguage(TranslateLanguage.ENGLISH)
-        .setTargetLanguage(TranslateLanguage.PORTUGUESE)
-        .build()
+    // Um tradutor por par de idiomas (ex.: en→pt para o conteúdo, pt→en para os termos de busca).
+    // O modelo de português é o mesmo nos dois sentidos, então não há download extra.
+    private val translators = ConcurrentHashMap<Pair<String, String>, Translator>()
 
-    private val translator = Translation.getClient(options)
+    private fun translatorFor(sourceLang: String, targetLang: String): Translator? {
+        val source = TranslateLanguage.fromLanguageTag(sourceLang) ?: return null
+        val target = TranslateLanguage.fromLanguageTag(targetLang) ?: return null
+        return translators.getOrPut(source to target) {
+            Translation.getClient(
+                TranslatorOptions.Builder()
+                    .setSourceLanguage(source)
+                    .setTargetLanguage(target)
+                    .build()
+            )
+        }
+    }
 
     override suspend fun translateText(
         text: String,
         sourceLang: String,
         targetLang: String
     ): String {
-        if (text.isBlank()) return text
+        if (text.isBlank() || sourceLang == targetLang) return text
+        val translator = translatorFor(sourceLang, targetLang) ?: return text
 
         return try {
             // Garante que o modelo de idioma (EN -> PT) está baixado

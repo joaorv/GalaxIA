@@ -1,6 +1,9 @@
 package com.example.galaxia.repository
 
+import androidx.core.text.HtmlCompat
 import com.example.galaxia.data.model.ApodResponse
+import com.example.galaxia.data.model.ApodSearchPage
+import com.example.galaxia.data.model.SiteSearchResult
 import com.example.galaxia.data.remote.ApiService
 import com.example.galaxia.data.remote.ApodMockData
 import com.example.galaxia.data.remote.RetrofitClient
@@ -12,6 +15,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import retrofit2.HttpException
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
@@ -103,6 +108,96 @@ class ApodRepository(
         }
     }
 
+    // --- Pesquisa ---
+
+    /**
+     * Pesquisa APODs em todo o acervo do science.nasa.gov.
+     *
+     * Na primeira página, a consulta (normalmente em português) é traduzida para inglês,
+     * idioma do conteúdo da NASA. Se o termo traduzido não trouxer nada, tenta o texto
+     * original (útil para nomes próprios como "Hale-Bopp"). Nas páginas seguintes, passe
+     * o [ApodSearchPage.searchTerm] devolvido para manter o mesmo termo.
+     *
+     * Diferente do feed, aqui erros de rede são propagados: dados de contingência
+     * não fazem sentido como resultado de pesquisa.
+     */
+    suspend fun searchApods(
+        query: String,
+        page: Int = 1,
+        searchTerm: String? = null,
+        perPage: Int = SEARCH_PAGE_SIZE
+    ): ApodSearchPage {
+        val term = searchTerm ?: translationService.translateText(query, "pt", "en").trim()
+        var result = fetchSearchPage(term, page, perPage)
+
+        val original = query.trim()
+        if (searchTerm == null && result.totalResults == 0 && !term.equals(original, ignoreCase = true)) {
+            result = fetchSearchPage(original, page, perPage)
+        }
+        return result
+    }
+
+    private suspend fun fetchSearchPage(term: String, page: Int, perPage: Int): ApodSearchPage = coroutineScope {
+        val response = apiService.searchSite(term = term, page = page, perPage = perPage)
+        if (!response.isSuccessful) throw HttpException(response)
+
+        val totalPages = response.headers()["X-WP-TotalPages"]?.toIntOrNull() ?: page
+        val totalResults = response.headers()["X-WP-Total"]?.toIntOrNull() ?: 0
+
+        val items = response.body().orEmpty()
+            .mapNotNull { parseSearchResult(it) }
+            .distinctBy { it.date }
+            .map { stub -> async { loadSearchResult(stub) } }
+            .awaitAll()
+
+        ApodSearchPage(
+            items = items,
+            page = page,
+            totalPages = totalPages,
+            totalResults = totalResults,
+            searchTerm = term
+        )
+    }
+
+    /**
+     * Extrai data e título de "APOD: 2026 October 26 – Título". Resultados que não são
+     * APOD (outros artigos de imagem do site) são descartados.
+     */
+    private fun parseSearchResult(result: SiteSearchResult): ApodResponse? {
+        val title = HtmlCompat.fromHtml(result.title.orEmpty(), HtmlCompat.FROM_HTML_MODE_LEGACY)
+            .toString()
+            .trim()
+        val match = SEARCH_TITLE_REGEX.find(title) ?: return null
+        val date = try {
+            LocalDate.parse(match.groupValues[1], SEARCH_TITLE_DATE_FORMAT)
+        } catch (_: Exception) {
+            return null
+        }
+
+        return ApodResponse(
+            date = date.format(DateTimeFormatter.ISO_LOCAL_DATE),
+            postId = result.id,
+            title = match.groupValues[2].trim(),
+            permalink = result.url,
+            mediaType = "other"
+        )
+    }
+
+    /**
+     * Completa o resultado com os dados do APOD (imagem, explicação, créditos) e traduz.
+     * Se o detalhe falhar, mantém título, data e link vindos da busca.
+     */
+    private suspend fun loadSearchResult(stub: ApodResponse): ApodResponse {
+        val full = try {
+            apiService.getApodByDate(dateCode = formatDateToCode(stub.date))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            stub
+        }
+        return translateApod(full)
+    }
+
     private suspend fun translateApod(apod: ApodResponse): ApodResponse {
         val cacheKey = if (apod.date.isNotBlank()) apod.date else apod.title
         translationCache[cacheKey]?.let { (translatedTitle, translatedExplanation) ->
@@ -137,5 +232,13 @@ class ApodRepository(
         } catch (_: Exception) {
             dateString.replace("-", "").takeLast(6)
         }
+    }
+
+    companion object {
+        const val SEARCH_PAGE_SIZE = 10
+
+        private val SEARCH_TITLE_REGEX = Regex("""^APOD:\s*(\d{4}\s+[A-Za-z]+\s+\d{1,2})\s*[–—-]\s*(.+)$""")
+        private val SEARCH_TITLE_DATE_FORMAT: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("yyyy MMMM d", Locale.ENGLISH)
     }
 }

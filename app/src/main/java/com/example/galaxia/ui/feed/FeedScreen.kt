@@ -3,6 +3,11 @@ package com.example.galaxia.ui.feed
 import com.example.galaxia.ui.detail.NewsDetailScreen
 import com.example.galaxia.ui.history.HistoryScreen
 import com.example.galaxia.ui.favorites.FavoritesScreen
+import com.example.galaxia.ui.search.SearchScreen
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.consumeWindowInsets
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -103,11 +108,12 @@ fun FeedScreen(
     val feedFilter by viewModel.feedFilter.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
     var detailTarget by remember { mutableStateOf<DetailTarget?>(null) }
+    var showSearch by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Seta "voltar" do sistema fecha o detalhe antes de sair do app
-    BackHandler(enabled = detailTarget != null) {
-        detailTarget = null
+    // Seta "voltar" do sistema fecha o detalhe, depois a pesquisa, antes de sair do app
+    BackHandler(enabled = detailTarget != null || showSearch) {
+        if (detailTarget != null) detailTarget = null else showSearch = false
     }
 
     LaunchedEffect(viewModel) {
@@ -171,7 +177,7 @@ fun FeedScreen(
             )
 
             IconButton(
-                onClick = { }
+                onClick = { showSearch = true }
             ) {
                 Icon(
                     imageVector = Icons.Default.Search,
@@ -278,6 +284,23 @@ fun FeedScreen(
             onTabSelected = { selectedTab = it }
         )
     }
+
+        // Tela de pesquisa, sobreposta ao feed; o detalhe abre por cima dela
+        AnimatedVisibility(
+            visible = showSearch,
+            enter = slideInVertically { it / 8 } + fadeIn(),
+            exit = slideOutVertically { it / 8 } + fadeOut()
+        ) {
+            SearchScreen(
+                favoriteIds = favoriteIds,
+                onToggleFavorite = { viewModel.toggleFavoriteApod(it) },
+                onOpenDetail = { apod -> detailTarget = DetailTarget(apod.toFavoriteEntity(), apod) },
+                onBack = { showSearch = false },
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
+            )
+        }
 
         // Tela de detalhe da notícia, sobreposta com animação de deslize
         AnimatedContent(
