@@ -90,7 +90,17 @@ import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.data.local.toApodResponse
 import com.example.galaxia.data.local.toFavoriteEntity
 import com.example.galaxia.data.model.ApodResponse
+import com.example.galaxia.data.model.FeedItem
+import com.example.galaxia.data.model.SpaceHighlight
+import com.example.galaxia.data.model.mergeFeedItems
 import com.example.galaxia.ui.theme.GalaxiaBackground
+import com.example.galaxia.ui.theme.GalaxiaNewsAccent
+import com.example.galaxia.ui.theme.GalaxiaWarning
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.WbSunny
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
@@ -106,6 +116,7 @@ fun FeedScreen(
     val apodState by viewModel.apodState.collectAsState()
     val favoriteIds by viewModel.favoriteIds.collectAsState()
     val feedFilter by viewModel.feedFilter.collectAsState()
+    val highlights by viewModel.highlights.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
     var detailTarget by remember { mutableStateOf<DetailTarget?>(null) }
     var showSearch by remember { mutableStateOf(false) }
@@ -238,21 +249,39 @@ fun FeedScreen(
                                 }
                             }
                             is FeedViewModel.ApodState.Success -> {
+                                val feedItems = remember(state.apods, highlights) {
+                                    mergeFeedItems(state.apods, highlights)
+                                }
                                 LazyColumn(
                                     modifier = Modifier.fillMaxSize(),
                                     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 20.dp),
                                     verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
                                     items(
-                                        items = state.apods,
-                                        key = { it.date }
-                                    ) { item ->
-                                        FeedCard(
-                                            apod = item,
-                                            isFavorite = "apod_${item.date}" in favoriteIds,
-                                            onToggleFavorite = { viewModel.toggleFavoriteApod(item) },
-                                            onClick = { detailTarget = DetailTarget(item.toFavoriteEntity(), item) }
-                                        )
+                                        items = feedItems,
+                                        key = { it.key },
+                                        contentType = { it::class }
+                                    ) { feedItem ->
+                                        when (feedItem) {
+                                            is FeedItem.Apod -> {
+                                                val item = feedItem.apod
+                                                FeedCard(
+                                                    apod = item,
+                                                    isFavorite = "apod_${item.date}" in favoriteIds,
+                                                    onToggleFavorite = { viewModel.toggleFavoriteApod(item) },
+                                                    onClick = { detailTarget = DetailTarget(item.toFavoriteEntity(), item) }
+                                                )
+                                            }
+                                            is FeedItem.Highlight -> {
+                                                val highlight = feedItem.highlight
+                                                HighlightCard(
+                                                    highlight = highlight,
+                                                    isFavorite = highlight.id in favoriteIds,
+                                                    onToggleFavorite = { viewModel.toggleFavoriteHighlight(highlight) },
+                                                    onClick = { detailTarget = DetailTarget(highlight.toFavoriteEntity()) }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -323,7 +352,8 @@ fun FeedScreen(
                             target.apod != null -> viewModel.toggleFavoriteApod(target.apod)
                             target.item.itemType == FavoriteType.APOD.name ->
                                 viewModel.toggleFavoriteApod(target.item.toApodResponse())
-                            target.item.id in favoriteIds -> viewModel.removeFavoriteById(target.item.id)
+                            // Notícias e curiosidades: a própria entidade já tem todos os dados
+                            else -> viewModel.toggleFavorite(target.item)
                         }
                     },
                     onBack = { detailTarget = null },
@@ -536,6 +566,142 @@ private fun FeedCard(
                             imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                             contentDescription = "Abrir no site da NASA",
                             tint = GalaxiaCyan,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Card de notícia (DONKI) ou curiosidade (NeoWs). Não tem imagem: a faixa colorida
+ * à esquerda e o ícone da categoria diferenciam o card das fotos do APOD.
+ */
+@Composable
+private fun HighlightCard(
+    highlight: SpaceHighlight,
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
+    onClick: () -> Unit = {}
+) {
+    val uriHandler = LocalUriHandler.current
+    val isNews = highlight.type == FavoriteType.NEWS
+    val accent = if (isNews) GalaxiaNewsAccent else GalaxiaCyan
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .clip(RoundedCornerShape(20.dp))
+            .background(GalaxiaCardBackground)
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(5.dp)
+                .fillMaxHeight()
+                .background(accent)
+        )
+
+        Column(modifier = Modifier.padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 8.dp)) {
+            // Categoria + data
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = if (isNews) Icons.Default.WbSunny else Icons.Default.Lightbulb,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (isNews) "NOTÍCIA · CLIMA ESPACIAL" else "CURIOSIDADE · ASTEROIDES",
+                    color = accent,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = formatDateBr(highlight.date),
+                    color = GalaxiaGray,
+                    fontSize = 12.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = highlight.title,
+                color = GalaxiaWhite,
+                fontSize = 18.sp,
+                lineHeight = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            highlight.badge?.let { badge ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(GalaxiaWarning.copy(alpha = 0.15f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = GalaxiaWarning,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = badge, color = GalaxiaWarning, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = highlight.body,
+                color = GalaxiaGray,
+                fontSize = 15.sp,
+                lineHeight = 22.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Ações: favorito, fonte e link
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
+                        tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+
+                Text(
+                    text = highlight.source,
+                    color = GalaxiaGray,
+                    fontSize = 12.sp,
+                    modifier = Modifier.weight(1f)
+                )
+
+                highlight.sourceUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                    IconButton(
+                        onClick = {
+                            try {
+                                uriHandler.openUri(url)
+                            } catch (_: Exception) {}
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = "Abrir no site da NASA",
+                            tint = accent,
                             modifier = Modifier.size(22.dp)
                         )
                     }

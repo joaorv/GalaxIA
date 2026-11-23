@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.example.galaxia.ui.components.OptimizedAsyncImage
 import com.example.galaxia.data.local.FavoriteEntity
 import com.example.galaxia.data.local.displayHdUrl
+import com.example.galaxia.data.local.isTextOnly
 import com.example.galaxia.data.local.FavoriteType
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
@@ -136,7 +137,8 @@ fun NewsDetailScreen(
                             .background(Color(0xFF161822)),
                         contentScale = ContentScale.FillWidth
                     )
-                } else {
+                } else if (!item.isTextOnly) {
+                    // Placeholder só para fotos do dia em vídeo; notícias e curiosidades não têm mídia
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

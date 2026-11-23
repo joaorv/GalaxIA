@@ -5,9 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.galaxia.data.local.FavoriteEntity
 import com.example.galaxia.data.local.FavoriteSortOrder
 import com.example.galaxia.data.local.FavoriteType
+import com.example.galaxia.data.local.toFavoriteEntity
 import com.example.galaxia.data.model.ApodResponse
+import com.example.galaxia.data.model.SpaceHighlight
 import com.example.galaxia.repository.ApodRepository
 import com.example.galaxia.repository.FavoriteRepository
+import com.example.galaxia.repository.SpaceHighlightsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -30,12 +33,20 @@ import java.time.format.DateTimeFormatter
 
 class FeedViewModel(
     private val apodRepository: ApodRepository = ApodRepository(),
-    private val favoriteRepository: FavoriteRepository = FavoriteRepository()
+    private val favoriteRepository: FavoriteRepository = FavoriteRepository(),
+    private val highlightsRepository: SpaceHighlightsRepository = SpaceHighlightsRepository()
 ) : BaseViewModel() {
 
     // --- Estados do Feed e Histórico (NASA APOD) ---
     private val _apodState = MutableStateFlow<ApodState>(ApodState.Loading)
     val apodState: StateFlow<ApodState> = _apodState
+
+    // --- Notícias (DONKI) e curiosidades (NeoWs) intercaladas no feed ---
+    // Carregam em paralelo às fotos; se falharem, o feed mostra só as fotos.
+    private val _highlights = MutableStateFlow<List<SpaceHighlight>>(emptyList())
+    val highlights: StateFlow<List<SpaceHighlight>> = _highlights.asStateFlow()
+
+    private var highlightsJob: Job? = null
 
     private val _feedFilter = MutableStateFlow(FeedFilter.LATEST)
     val feedFilter: StateFlow<FeedFilter> = _feedFilter.asStateFlow()
@@ -172,11 +183,45 @@ class FeedViewModel(
         }
     }
 
+    fun toggleFavoriteHighlight(highlight: SpaceHighlight) {
+        toggleFavorite(highlight.toFavoriteEntity())
+    }
+
+    /**
+     * Alterna o favorito de qualquer item já convertido para a entidade unificada
+     * (usado pelas notícias, curiosidades e pela tela de detalhe).
+     */
+    fun toggleFavorite(favorite: FavoriteEntity) {
+        viewModelScope.launch {
+            try {
+                val isCurrentlyFavorite = favorite.id in _favoriteIds.value
+                val added = favoriteRepository.toggleFavorite(favorite, isCurrentlyFavorite)
+                val label = when (favorite.itemType) {
+                    FavoriteType.NEWS.name -> "Notícia adicionada" to "Notícia removida"
+                    FavoriteType.CURIOSITY.name -> "Curiosidade adicionada" to "Curiosidade removida"
+                    else -> "Foto adicionada" to "Foto removida"
+                }
+                _userMessage.emit(
+                    if (added) "${label.first} aos favoritos" else "${label.second} dos favoritos"
+                )
+            } catch (e: Exception) {
+                Log.e("FeedViewModel", "Erro ao alternar favorito: ${favorite.id}", e)
+                _userMessage.emit("Erro ao atualizar favoritos")
+            }
+        }
+    }
+
     fun removeFavoriteById(id: String) {
         viewModelScope.launch {
             try {
+                val itemType = _allFavorites.value.firstOrNull { it.id == id }?.itemType
                 favoriteRepository.removeFavoriteById(id)
-                _userMessage.emit("Foto removida dos favoritos")
+                val label = when (itemType) {
+                    FavoriteType.NEWS.name -> "Notícia"
+                    FavoriteType.CURIOSITY.name -> "Curiosidade"
+                    else -> "Foto"
+                }
+                _userMessage.emit("$label removida dos favoritos")
             } catch (e: Exception) {
                 Log.e("FeedViewModel", "Erro ao remover favorito por id: $id", e)
                 _userMessage.emit("Erro ao remover favorito")
@@ -195,7 +240,29 @@ class FeedViewModel(
         fetchApod()
     }
 
+    /**
+     * Busca notícias e curiosidades. O repositório mantém cache de 30 min, então chamar
+     * a cada recarga do feed só vai à rede quando o cache expirou ou a busca anterior falhou.
+     */
+    fun loadHighlights() {
+        if (highlightsJob?.isActive == true) return
+        highlightsJob = viewModelScope.launch {
+            try {
+                val result = highlightsRepository.getHighlights()
+                // Se a nova busca falhar (lista vazia), mantém os destaques que já estavam na tela
+                if (result.isNotEmpty()) _highlights.value = result
+                Log.d("FeedViewModel", "Destaques carregados: ${result.size}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Conteúdo complementar: uma falha aqui não deve virar erro na tela
+                Log.w("FeedViewModel", "Falha ao carregar notícias/curiosidades", e)
+            }
+        }
+    }
+
     fun fetchApod() {
+        loadHighlights()
         // Cancela uma busca anterior para que o resultado de outro filtro não sobrescreva o atual
         fetchApodJob?.cancel()
         fetchApodJob = viewModelScope.launch {

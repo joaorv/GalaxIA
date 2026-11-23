@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
     private const val BASE_URL = "https://science.nasa.gov/wp-json/wp/v2/"
+    private const val NASA_API_BASE_URL = "https://api.nasa.gov/"
 
     /**
      * Interceptor que injeta automaticamente a 'api_key' configurada no arquivo .env
@@ -50,5 +51,15 @@ object RetrofitClient {
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(ApiService::class.java)
+    }
+
+    /** Cliente de api.nasa.gov (NeoWs e DONKI), com o mesmo OkHttp e a mesma chave. */
+    val nasaApiService: NasaApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(NASA_API_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(NasaApiService::class.java)
     }
 }

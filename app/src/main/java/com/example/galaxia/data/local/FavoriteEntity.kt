@@ -2,6 +2,7 @@ package com.example.galaxia.data.local
 
 import com.example.galaxia.data.model.ApodResponse
 import com.example.galaxia.data.model.BaseModel
+import com.example.galaxia.data.model.SpaceHighlight
 
 /**
  * Entidade unificada para persistência de favoritos no GalaxIA.
@@ -56,6 +57,31 @@ fun ApodResponse.toFavoriteEntity(): FavoriteEntity {
         authorOrCopyright = author
     )
 }
+
+/**
+ * Converte uma notícia (DONKI) ou curiosidade (NeoWs) para a entidade de favoritos.
+ * Esses itens não têm imagem; a fonte fica em [FavoriteEntity.authorOrCopyright].
+ */
+fun SpaceHighlight.toFavoriteEntity(): FavoriteEntity {
+    return FavoriteEntity(
+        id = id,
+        itemType = type.name,
+        title = title,
+        subtitleOrDate = date,
+        explanationOrBody = body,
+        imageUrl = null,
+        extraUrl = sourceUrl,
+        mediaType = MEDIA_TYPE_TEXT,
+        authorOrCopyright = source
+    )
+}
+
+/** Tipo de mídia dos itens só de texto (notícias e curiosidades). */
+const val MEDIA_TYPE_TEXT = "text"
+
+/** true para notícias e curiosidades, que são exibidas sem área de imagem. */
+val FavoriteEntity.isTextOnly: Boolean
+    get() = itemType != FavoriteType.APOD.name
 
 /**
  * Converte a entidade de favoritos para ApodResponse quando o item for do tipo APOD.
