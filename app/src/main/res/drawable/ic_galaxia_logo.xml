@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 1. PARTE TRASEIRA DO ANEL DE SATURNO (passa atras da parte superior do G) -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-25">
+
+        <!-- Anel externo traseiro -->
+        <path
+            android:pathData="M 90,54 C 90,46.82 73.88,41 54,41 C 34.12,41 18,46.82 18,54"
+            android:strokeWidth="3.2"
+            android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:startX="18"
+                    android:startY="54"
+                    android:endX="90"
+                    android:endY="54"
+                    android:type="linear">
+                    <item android:color="#0055AA" android:offset="0.0" />
+                    <item android:color="#00A8FF" android:offset="0.5" />
+                    <item android:color="#003377" android:offset="1.0" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Detalhe do anel interno traseiro -->
+        <path
+            android:pathData="M 84,54 C 84,48.5 70.57,44 54,44 C 37.43,44 24,48.5 24,54"
+            android:strokeWidth="1.2"
+            android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:startX="24"
+                    android:startY="54"
+                    android:endX="84"
+                    android:endY="54"
+                    android:type="linear">
+                    <item android:color="#4000E5FF" android:offset="0.0" />
+                    <item android:color="#6000E5FF" android:offset="0.5" />
+                    <item android:color="#200055AA" android:offset="1.0" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+
+    <!-- 2. A LETRA "G" ESTILIZADA -->
+    <path
+        android:fillType="nonZero"
+        android:pathData="M 68,36
+                          C 60,30 46,30 37,39
+                          C 28,48 28,60 37,69
+                          C 46,78 60,78 68,71
+                          C 72,67 74,62 74,54
+                          L 52,54
+                          L 52,61
+                          L 66,61
+                          C 65,66 59,70 53,70
+                          C 44,70 36,63 36,54
+                          C 36,45 44,38 53,38
+                          C 59,38 64,41 67,45
+                          Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="30"
+                android:startY="30"
+                android:endX="74"
+                android:endY="78"
+                android:type="linear">
+                <item android:color="#00F0FF" android:offset="0.0" />
+                <item android:color="#0099FF" android:offset="0.45" />
+                <item android:color="#0040DD" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Brilho no contorno interno do G -->
+    <path
+        android:pathData="M 68,36 C 60,30 46,30 37,39 C 28,48 28,60 37,69"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="68"
+                android:startY="36"
+                android:endX="37"
+                android:endY="69"
+                android:type="linear">
+                <item android:color="#E0F7FA" android:offset="0.0" />
+                <item android:color="#8000E5FF" android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- 3. PARTE FRONTAL DO ANEL DE SATURNO (passa na frente do G) -->
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-25">
+
+        <!-- Anel externo frontal -->
+        <path
+            android:pathData="M 18,54 C 18,61.18 34.12,67 54,67 C 73.88,67 90,61.18 90,54"
+            android:strokeWidth="3.6"
+            android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:startX="18"
+                    android:startY="54"
+                    android:endX="90"
+                    android:endY="54"
+                    android:type="linear">
+                    <item android:color="#00E5FF" android:offset="0.0" />
+                    <item android:color="#00B8E6" android:offset="0.5" />
+                    <item android:color="#0077FF" android:offset="1.0" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Detalhe do anel interno frontal -->
+        <path
+            android:pathData="M 24,54 C 24,59.5 37.43,64 54,64 C 70.57,64 84,59.5 84,54"
+            android:strokeWidth="1.4"
+            android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:startX="24"
+                    android:startY="54"
+                    android:endX="84"
+                    android:endY="54"
+                    android:type="linear">
+                    <item android:color="#E0F7FA" android:offset="0.0" />
+                    <item android:color="#8000E5FF" android:offset="0.6" />
+                    <item android:color="#400077FF" android:offset="1.0" />
+                </gradient>
+            </aapt:attr>
+        </path>
+
+        <!-- Particula/Brilho orbitando no anel -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M 78,63.5 L 79.5,65 L 78,66.5 L 76.5,65 Z" />
+    </group>
+
+    <!-- 4. ESTRELA DE BRILHO CÓSMICO (Canto superior direito) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M 72,28 L 73.5,31 L 76.5,32.5 L 73.5,34 L 72,37 L 70.5,34 L 67.5,32.5 L 70.5,31 Z" />
+
+</vector>
