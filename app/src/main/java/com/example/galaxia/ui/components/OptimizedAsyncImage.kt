@@ -44,30 +44,44 @@ fun OptimizedAsyncImage(
 
     if (validHighRes == null) {
         // Apenas uma imagem (não HD ou fallback)
+        var imageState by remember(validLowRes) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
         val painter = rememberAsyncImagePainter(
             model = ImageRequest.Builder(context)
                 .data(validLowRes)
                 .crossfade(true)
-                .build()
+                .build(),
+            onState = { imageState = it }
         )
+        val imageModifier = if (imageState !is AsyncImagePainter.State.Success) {
+            modifier.shimmerEffect()
+        } else {
+            modifier.background(Color(0xFF161822))
+        }
         Image(
             painter = painter,
             contentDescription = contentDescription,
-            modifier = modifier.background(Color(0xFF161822)),
+            modifier = imageModifier,
             contentScale = contentScale
         )
     } else if (validLowRes == null) {
         // Apenas imagem HD disponível
+        var imageState by remember(validHighRes) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
         val painter = rememberAsyncImagePainter(
             model = ImageRequest.Builder(context)
                 .data(validHighRes)
                 .crossfade(true)
-                .build()
+                .build(),
+            onState = { imageState = it }
         )
+        val imageModifier = if (imageState !is AsyncImagePainter.State.Success) {
+            modifier.shimmerEffect()
+        } else {
+            modifier.background(Color(0xFF161822))
+        }
         Image(
             painter = painter,
             contentDescription = contentDescription,
-            modifier = modifier.background(Color(0xFF161822)),
+            modifier = imageModifier,
             contentScale = contentScale
         )
     } else {
@@ -103,6 +117,7 @@ fun OptimizedAsyncImage(
         )
 
         val isHighResSuccess = highResState is AsyncImagePainter.State.Success
+        val isAnySuccess = isHighResSuccess || lowResState is AsyncImagePainter.State.Success
 
         val painterToDraw: Painter = when {
             isHighResSuccess -> highResPainter
@@ -110,10 +125,16 @@ fun OptimizedAsyncImage(
             else -> lowResPainter
         }
 
+        val imageModifier = if (!isAnySuccess) {
+            modifier.shimmerEffect()
+        } else {
+            modifier.background(Color(0xFF161822))
+        }
+
         Image(
             painter = painterToDraw,
             contentDescription = contentDescription,
-            modifier = modifier.background(Color(0xFF161822)),
+            modifier = imageModifier,
             contentScale = contentScale
         )
     }

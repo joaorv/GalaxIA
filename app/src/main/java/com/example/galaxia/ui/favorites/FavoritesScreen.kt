@@ -35,9 +35,9 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.SortByAlpha
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import com.example.galaxia.ui.components.FavoriteSkeletonList
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -237,29 +237,9 @@ fun FavoritesScreen(
                 label = "FavoritesLoadingTransition"
             ) { loading ->
                 if (loading) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = 60.dp),
-                        contentAlignment = Alignment.TopCenter
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            CircularProgressIndicator(
-                                color = GalaxiaCyan,
-                                modifier = Modifier.size(36.dp),
-                                strokeWidth = 3.dp
-                            )
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Text(
-                                text = "Atualizando favoritos...",
-                                color = GalaxiaGray,
-                                fontSize = 13.sp
-                            )
-                        }
-                    }
+                    FavoriteSkeletonList(
+                        modifier = Modifier.fillMaxSize()
+                    )
                 } else if (favorites.isEmpty()) {
                     EmptyFavoritesState(selectedFilter = selectedFilter)
                 } else {

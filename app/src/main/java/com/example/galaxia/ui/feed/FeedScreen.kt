@@ -48,7 +48,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.galaxia.ui.components.FeedSkeletonList
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -209,9 +209,8 @@ fun FeedScreen(
                     ) {
                         when (val state = apodState) {
                             is FeedViewModel.ApodState.Loading -> {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.align(Alignment.Center),
-                                    color = GalaxiaCyan
+                                FeedSkeletonList(
+                                    modifier = Modifier.fillMaxSize()
                                 )
                             }
                             is FeedViewModel.ApodState.Error -> {

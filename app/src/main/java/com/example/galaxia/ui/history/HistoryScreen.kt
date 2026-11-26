@@ -27,7 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.galaxia.ui.components.HistoryCardSkeleton
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
@@ -215,22 +215,7 @@ fun HistoryScreen(
         // Exibição dos Dados da Foto Selecionada
         when (val state = historyState) {
             is FeedViewModel.HistoryState.Loading -> {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(300.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = GalaxiaCyan)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Buscando foto de ${formatDateBr(selectedDateString)}...",
-                            color = GalaxiaGray,
-                            fontSize = 14.sp
-                        )
-                    }
-                }
+                HistoryCardSkeleton()
             }
 
             is FeedViewModel.HistoryState.Error -> {

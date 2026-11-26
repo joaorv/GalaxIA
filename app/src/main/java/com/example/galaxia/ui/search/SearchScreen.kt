@@ -35,7 +35,8 @@ import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.galaxia.ui.components.SearchResultCardSkeleton
+import com.example.galaxia.ui.components.SearchResultSkeletonList
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -138,18 +139,11 @@ fun SearchScreen(
                         }
                     )
 
-                    is SearchState.Loading -> Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        CircularProgressIndicator(color = GalaxiaCyan)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Pesquisando “${current.query}”…",
-                            color = GalaxiaGray,
-                            fontSize = 14.sp
-                        )
-                    }
+                    is SearchState.Loading -> SearchResultSkeletonList(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    )
 
                     is SearchState.Empty -> MessageContent(
                         icon = Icons.Default.SearchOff,
@@ -401,10 +395,8 @@ private fun ResultsContent(
                 contentAlignment = Alignment.Center
             ) {
                 when {
-                    state.isLoadingMore -> CircularProgressIndicator(
-                        color = GalaxiaCyan,
-                        modifier = Modifier.size(28.dp),
-                        strokeWidth = 3.dp
+                    state.isLoadingMore -> SearchResultCardSkeleton(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                     )
                     state.loadMoreFailed -> TextButton(onClick = onRetryLoadMore) {
                         Text("Falha ao carregar mais. Tocar para tentar de novo", color = GalaxiaCyan)
