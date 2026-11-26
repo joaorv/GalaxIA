@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.galaxia.ui.components.HistoryCardSkeleton
+import com.example.galaxia.ui.components.VideoMediaCard
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
@@ -335,7 +336,18 @@ private fun HistoryCard(
             .background(GalaxiaCardBackground)
             .clickable(onClick = onClick)
     ) {
-        if (apod.mediaType == "image") {
+        val isVideoContent = apod.mediaType == "video" || apod.mediaType == "iframe" || apod.mediaType == "embed"
+        if (isVideoContent) {
+            VideoMediaCard(
+                mediaUrl = apod.effectiveMediaUrl,
+                thumbnailUrl = apod.displayThumbnailUrl,
+                title = apod.displayTitle,
+                permalinkUrl = apod.officialNasaUrl,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(260.dp)
+            )
+        } else if (apod.mediaType == "image") {
             OptimizedAsyncImage(
                 lowResUrl = apod.lowResImageUrl,
                 highResUrl = apod.highResImageUrl,

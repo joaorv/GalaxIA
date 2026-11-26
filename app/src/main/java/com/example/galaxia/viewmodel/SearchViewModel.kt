@@ -2,10 +2,13 @@ package com.example.galaxia.viewmodel
 
 import android.util.Log
 import androidx.lifecycle.viewModelScope
-import com.example.galaxia.data.model.ApodResponse
-import com.example.galaxia.repository.ApodRepository
+import com.example.galaxia.data.model.GlobalSearchItem
+import com.example.galaxia.repository.GlobalSearchRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,11 +20,11 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 /**
- * Estado da tela de pesquisa de notícias (APODs de todo o acervo da NASA).
- * A pesquisa dispara sozinha após uma pausa na digitação ou ao tocar em "buscar" no teclado.
+ * Estado da Pesquisa Global do GalaxIA (NASA Image & Video Library, DONKI, EONET e APOD).
+ * Dispara com debounce ao digitar, cancela buscas anteriores e traduz progressivamente.
  */
 class SearchViewModel(
-    private val apodRepository: ApodRepository = ApodRepository()
+    private val globalSearchRepository: GlobalSearchRepository = GlobalSearchRepository()
 ) : BaseViewModel() {
 
     private val _query = MutableStateFlow("")
@@ -31,6 +34,7 @@ class SearchViewModel(
     val state: StateFlow<SearchState> = _state.asStateFlow()
 
     private var searchJob: Job? = null
+    private var translationJob: Job? = null
 
     fun onQueryChange(text: String) {
         _query.value = text
@@ -45,6 +49,7 @@ class SearchViewModel(
 
     fun clear() {
         searchJob?.cancel()
+        translationJob?.cancel()
         _query.value = ""
         _state.value = SearchState.Idle
     }
@@ -58,11 +63,11 @@ class SearchViewModel(
     private fun startSearch(debounceMs: Long, force: Boolean = false) {
         val text = _query.value.trim()
 
-        // Evita repetir a mesma pesquisa quando o texto não mudou de fato (ex.: espaço no fim)
         val current = _state.value
         if (!force && current is SearchState.Results && current.query == text) return
 
         searchJob?.cancel()
+        translationJob?.cancel()
         if (text.length < MIN_QUERY_LENGTH) {
             _state.value = SearchState.Idle
             return
@@ -72,18 +77,28 @@ class SearchViewModel(
             delay(debounceMs)
             _state.value = SearchState.Loading(text)
             try {
-                val page = apodRepository.searchApods(text)
-                _state.value = if (page.items.isEmpty() && !page.hasMore) {
-                    SearchState.Empty(text)
+                val page = globalSearchRepository.search(query = text, page = 1)
+                if (_query.value.trim() != text) return@launch
+
+                if (page.items.isEmpty() && !page.hasMore) {
+                    _state.value = SearchState.Empty(text)
                 } else {
-                    SearchState.Results(
+                    val prepared = prepareInitialTranslation(page.items)
+                    if (_query.value.trim() != text) return@launch
+
+                    _state.value = SearchState.Results(
                         query = text,
                         searchTerm = page.searchTerm,
-                        items = page.items,
+                        items = prepared,
                         totalResults = page.totalResults,
                         page = page.page,
                         hasMore = page.hasMore
                     )
+
+                    val pending = prepared.filter {
+                        !it.isTranslated || (it.description.isNotBlank() && it.translatedDescription.isNullOrBlank())
+                    }
+                    launchBackgroundTranslation(text, pending)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -102,18 +117,29 @@ class SearchViewModel(
         _state.value = current.copy(isLoadingMore = true, loadMoreFailed = false)
         searchJob = viewModelScope.launch {
             try {
-                val next = apodRepository.searchApods(
+                val next = globalSearchRepository.search(
                     query = current.query,
                     page = current.page + 1,
                     searchTerm = current.searchTerm
                 )
-                val merged = (current.items + next.items).distinctBy { it.date }
+                if (_query.value.trim() != current.query) return@launch
+
+                val existingIds = current.items.mapTo(HashSet()) { it.id }
+                val uniqueNew = next.items.filter { it.id !in existingIds }
+                val preparedNew = prepareInitialTranslation(uniqueNew)
+                val merged = (current.items + preparedNew).sortedByDescending { it.date }
+
                 _state.value = current.copy(
                     items = merged,
                     page = next.page,
-                    hasMore = next.hasMore,
+                    hasMore = next.hasMore && uniqueNew.isNotEmpty(),
                     isLoadingMore = false
                 )
+
+                val pending = preparedNew.filter {
+                    !it.isTranslated || (it.description.isNotBlank() && it.translatedDescription.isNullOrBlank())
+                }
+                launchBackgroundTranslation(current.query, pending)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -123,12 +149,39 @@ class SearchViewModel(
         }
     }
 
+    private suspend fun prepareInitialTranslation(items: List<GlobalSearchItem>): List<GlobalSearchItem> {
+        val visible = items.take(FULLY_TRANSLATED_BEFORE_SHOWING)
+            .map { globalSearchRepository.translateItem(it) }
+        val others = coroutineScope {
+            items.drop(FULLY_TRANSLATED_BEFORE_SHOWING)
+                .map { async { globalSearchRepository.translateTitleOnly(it) } }
+                .awaitAll()
+        }
+        return visible + others
+    }
+
+    private fun launchBackgroundTranslation(expectedQuery: String, pending: List<GlobalSearchItem>) {
+        if (pending.isEmpty()) return
+        translationJob?.cancel()
+        translationJob = viewModelScope.launch {
+            for (item in pending) {
+                if (_query.value.trim() != expectedQuery) return@launch
+                val translated = globalSearchRepository.translateItem(item)
+                val current = _state.value as? SearchState.Results ?: return@launch
+                if (current.query != expectedQuery) return@launch
+                _state.value = current.copy(
+                    items = current.items.map { if (it.id == translated.id) translated else it }
+                )
+            }
+        }
+    }
+
     private fun errorMessage(e: Exception): String = when (e) {
         is HttpException -> when (e.code()) {
             429 -> "Muitas pesquisas em pouco tempo. Aguarde um instante e tente de novo."
-            else -> "Erro no site da NASA (${e.code()}). Tente novamente."
+            else -> "Erro nos servidores da NASA (${e.code()}). Tente novamente."
         }
-        is SocketTimeoutException -> "O servidor da NASA demorou muito para responder."
+        is SocketTimeoutException -> "Os servidores da NASA demoraram muito para responder."
         is UnknownHostException -> "Sem conexão com a internet. Verifique seu Wi-Fi ou dados móveis."
         is IOException -> "Falha na comunicação com a rede. Tente novamente."
         else -> "Ocorreu um erro inesperado: ${e.message}"
@@ -142,7 +195,7 @@ class SearchViewModel(
         data class Results(
             val query: String,
             val searchTerm: String,
-            val items: List<ApodResponse>,
+            val items: List<GlobalSearchItem>,
             val totalResults: Int,
             val page: Int,
             val hasMore: Boolean,
@@ -154,6 +207,7 @@ class SearchViewModel(
     companion object {
         private const val TAG = "SearchViewModel"
         private const val TYPING_DEBOUNCE_MS = 600L
+        private const val FULLY_TRANSLATED_BEFORE_SHOWING = 3
         const val MIN_QUERY_LENGTH = 3
     }
 }

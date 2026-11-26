@@ -25,9 +25,21 @@ interface ApiService {
      * Mesma listagem, mas com acesso aos cabeçalhos (X-WP-Total traz o total de APODs publicados).
      */
     @GET("apod-basic")
+    suspend fun getApodList(
+        @Query("per_page") perPage: Int = 10,
+        @Query("page") page: Int = 1,
+        @Query("thumbs") thumbs: Boolean = true,
+        @Query("api_key") apiKey: String = BuildConfig.NASA_API_KEY
+    ): List<ApodResponse>
+
+    /**
+     * Mesma listagem, mas com acesso aos cabeçalhos (X-WP-Total traz o total de APODs publicados).
+     */
+    @GET("apod-basic")
     suspend fun getApodListResponse(
         @Query("per_page") perPage: Int = 1,
         @Query("page") page: Int = 1,
+        @Query("thumbs") thumbs: Boolean = true,
         @Query("api_key") apiKey: String = BuildConfig.NASA_API_KEY
     ): Response<List<ApodResponse>>
 
@@ -49,6 +61,7 @@ interface ApiService {
     @GET("apod-basic/{dateCode}")
     suspend fun getApodByDate(
         @Path("dateCode") dateCode: String,
+        @Query("thumbs") thumbs: Boolean = true,
         @Query("api_key") apiKey: String = BuildConfig.NASA_API_KEY
     ): ApodResponse
 }

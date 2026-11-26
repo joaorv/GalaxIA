@@ -3,7 +3,9 @@ package com.example.galaxia.repository
 import androidx.core.text.HtmlCompat
 import com.example.galaxia.data.model.ApodResponse
 import com.example.galaxia.data.model.ApodSearchPage
+import com.example.galaxia.data.model.SearchFilter
 import com.example.galaxia.data.model.SiteSearchResult
+import com.example.galaxia.data.model.matchesFilter
 import com.example.galaxia.data.remote.ApiService
 import com.example.galaxia.data.remote.ApodMockData
 import com.example.galaxia.data.remote.RetrofitClient
@@ -131,36 +133,64 @@ class ApodRepository(
         query: String,
         page: Int = 1,
         searchTerm: String? = null,
+        filter: SearchFilter = SearchFilter.ALL,
         perPage: Int = SEARCH_PAGE_SIZE
     ): ApodSearchPage {
         val term = searchTerm ?: translationService.translateText(query, "pt", "en").trim()
-        var result = fetchSearchPage(term, page, perPage)
+        var result = fetchFilteredSearchPage(term, page, filter, perPage)
 
         val original = query.trim()
-        if (searchTerm == null && result.totalResults == 0 && !term.equals(original, ignoreCase = true)) {
-            result = fetchSearchPage(original, page, perPage)
+        if (searchTerm == null && result.items.isEmpty() && !term.equals(original, ignoreCase = true)) {
+            result = fetchFilteredSearchPage(original, page, filter, perPage)
         }
         return result
     }
 
-    private suspend fun fetchSearchPage(term: String, page: Int, perPage: Int): ApodSearchPage = coroutineScope {
-        val response = apiService.searchSite(term = term, page = page, perPage = perPage)
-        if (!response.isSuccessful) throw HttpException(response)
+    private suspend fun fetchFilteredSearchPage(
+        term: String,
+        startPage: Int,
+        filter: SearchFilter,
+        targetCount: Int
+    ): ApodSearchPage = coroutineScope {
+        var currentPage = startPage
+        var totalPages = startPage
+        var totalResults = 0
+        val collectedItems = mutableListOf<ApodResponse>()
+        var pagesFetched = 0
+        val maxPagesPerFetch = if (filter == SearchFilter.ALL) 1 else 5
 
-        val totalPages = response.headers()["X-WP-TotalPages"]?.toIntOrNull() ?: page
-        val totalResults = response.headers()["X-WP-Total"]?.toIntOrNull() ?: 0
+        while (collectedItems.size < targetCount && currentPage <= totalPages && pagesFetched < maxPagesPerFetch) {
+            val response = apiService.searchSite(term = term, page = currentPage, perPage = SEARCH_PAGE_SIZE)
+            if (!response.isSuccessful) {
+                if (collectedItems.isNotEmpty()) break
+                throw HttpException(response)
+            }
 
-        val items = response.body().orEmpty()
-            .mapNotNull { parseSearchResult(it) }
-            .distinctBy { it.date }
-            .map { stub -> async { loadSearchResult(stub) } }
-            .awaitAll()
+            totalPages = response.headers()["X-WP-TotalPages"]?.toIntOrNull() ?: currentPage
+            totalResults = response.headers()["X-WP-Total"]?.toIntOrNull() ?: totalResults
+
+            val rawItems = response.body().orEmpty()
+                .mapNotNull { parseSearchResult(it) }
+                .distinctBy { it.date }
+                .map { stub -> async { loadSearchResult(stub) } }
+                .awaitAll()
+
+            val filtered = rawItems.filter { it.matchesFilter(filter) }
+            for (item in filtered) {
+                if (collectedItems.none { it.date == item.date }) {
+                    collectedItems.add(item)
+                }
+            }
+
+            pagesFetched++
+            currentPage++
+        }
 
         ApodSearchPage(
-            items = items,
-            page = page,
+            items = collectedItems,
+            page = (currentPage - 1).coerceAtLeast(startPage),
             totalPages = totalPages,
-            totalResults = totalResults,
+            totalResults = if (filter == SearchFilter.ALL) totalResults else collectedItems.size,
             searchTerm = term
         )
     }

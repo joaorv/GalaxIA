@@ -3,7 +3,10 @@ package com.example.galaxia.ui.feed
 import com.example.galaxia.ui.detail.NewsDetailScreen
 import com.example.galaxia.ui.history.HistoryScreen
 import com.example.galaxia.ui.favorites.FavoritesScreen
+import com.example.galaxia.ui.news.SpaceNewsScreen
 import com.example.galaxia.ui.search.SearchScreen
+import com.example.galaxia.data.model.toFavoriteEntity
+import com.example.galaxia.viewmodel.SpaceNewsViewModel
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -32,6 +35,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -39,7 +44,8 @@ import androidx.compose.material.icons.filled.Copyright
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
@@ -49,6 +55,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import com.example.galaxia.ui.components.FeedSkeletonList
+import com.example.galaxia.ui.components.VideoMediaCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -66,9 +73,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -84,6 +92,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.galaxia.GalaxiaApplication
+import com.example.galaxia.R
+import com.example.galaxia.data.local.NasaApiKeyManager
+import com.example.galaxia.ui.components.ApiKeyDialog
 import com.example.galaxia.ui.components.OptimizedAsyncImage
 import com.example.galaxia.data.local.FavoriteEntity
 import com.example.galaxia.data.local.FavoriteType
@@ -102,11 +114,18 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel = viewModel(),
+    spaceNewsViewModel: SpaceNewsViewModel = viewModel(),
 ) {
     val apodState by viewModel.apodState.collectAsState()
     val favoriteIds by viewModel.favoriteIds.collectAsState()
     val feedFilter by viewModel.feedFilter.collectAsState()
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabPagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
+    val coroutineScope = rememberCoroutineScope()
+    val apiKeyManager = remember { NasaApiKeyManager.getInstance(GalaxiaApplication.instance) }
+    val shouldShowApiKeyPrompt by apiKeyManager.shouldShowOnboardingPrompt.collectAsState()
+    val isUsingCustomKey by apiKeyManager.isUsingCustomKey.collectAsState()
+    val savedCustomKey by apiKeyManager.customApiKey.collectAsState()
+    var showApiKeyDialog by remember { mutableStateOf(false) }
     var detailTarget by remember { mutableStateOf<DetailTarget?>(null) }
     var showSearch by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -176,26 +195,45 @@ fun FeedScreen(
                 fontWeight = FontWeight.Bold
             )
 
-            IconButton(
-                onClick = { showSearch = true }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Search,
-                    contentDescription = "Pesquisar",
-                    tint = GalaxiaWhite,
-                    modifier = Modifier.size(28.dp)
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = { showApiKeyDialog = true }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Key,
+                        contentDescription = "Configurar chave de API da NASA",
+                        tint = if (isUsingCustomKey) GalaxiaCyan else GalaxiaGray,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = { showSearch = true }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Pesquisar",
+                        tint = GalaxiaWhite,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             }
         }
 
-        // Conteúdo
+        // Conteúdo com navegação por deslize entre as abas principais
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            when (selectedTab) {
-                0 -> Column(modifier = Modifier.fillMaxSize()) {
+            HorizontalPager(
+                state = tabPagerState,
+                beyondViewportPageCount = 0,
+                userScrollEnabled = detailTarget == null && !showSearch,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                when (page) {
+                    0 -> Column(modifier = Modifier.fillMaxSize()) {
                     FeedFilterRow(
                         selectedFilter = feedFilter,
                         isLoading = apodState is FeedViewModel.ApodState.Loading,
@@ -259,6 +297,21 @@ fun FeedScreen(
                     }
                 }
                 1 -> {
+                    SpaceNewsScreen(
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { item ->
+                            viewModel.toggleFavoriteItem(item.toFavoriteEntity())
+                        },
+                        onOpenDetail = { item, pageIndex ->
+                            detailTarget = DetailTarget(
+                                item = item.toFavoriteEntity(),
+                                initialImageIndex = pageIndex
+                            )
+                        },
+                        newsViewModel = spaceNewsViewModel
+                    )
+                }
+                2 -> {
                     HistoryScreen(
                         viewModel = viewModel,
                         onOpenDetail = { apod ->
@@ -266,7 +319,7 @@ fun FeedScreen(
                         }
                     )
                 }
-                2 -> {
+                3 -> {
                     FavoritesScreen(
                         viewModel = viewModel,
                         onOpenDetail = { favorite ->
@@ -274,13 +327,18 @@ fun FeedScreen(
                         }
                     )
                 }
+                }
             }
         }
 
         // Barra inferior
         BottomNavigation(
-            selectedTab = selectedTab,
-            onTabSelected = { selectedTab = it }
+            selectedTab = tabPagerState.currentPage,
+            onTabSelected = { targetTab ->
+                coroutineScope.launch {
+                    tabPagerState.animateScrollToPage(targetTab)
+                }
+            }
         )
     }
 
@@ -292,8 +350,16 @@ fun FeedScreen(
         ) {
             SearchScreen(
                 favoriteIds = favoriteIds,
-                onToggleFavorite = { viewModel.toggleFavoriteApod(it) },
-                onOpenDetail = { apod -> detailTarget = DetailTarget(apod.toFavoriteEntity(), apod) },
+                onToggleFavorite = { item ->
+                    if (item.apod != null) {
+                        viewModel.toggleFavoriteApod(item.apod)
+                    } else {
+                        viewModel.toggleFavoriteItem(item.toFavoriteEntity())
+                    }
+                },
+                onOpenDetail = { item ->
+                    detailTarget = DetailTarget(item.toFavoriteEntity(), item.apod)
+                },
                 onBack = { showSearch = false },
                 modifier = Modifier
                     .padding(innerPadding)
@@ -317,18 +383,56 @@ fun FeedScreen(
                 NewsDetailScreen(
                     item = target.item,
                     isFavorite = target.item.id in favoriteIds,
+                    initialImageIndex = target.initialImageIndex,
                     onToggleFavorite = {
                         when {
                             target.apod != null -> viewModel.toggleFavoriteApod(target.apod)
                             target.item.itemType == FavoriteType.APOD.name ->
                                 viewModel.toggleFavoriteApod(target.item.toApodResponse())
-                            target.item.id in favoriteIds -> viewModel.removeFavoriteById(target.item.id)
+                            else -> viewModel.toggleFavoriteItem(target.item)
                         }
                     },
                     onBack = { detailTarget = null },
                     modifier = Modifier.padding(innerPadding)
                 )
             }
+        }
+
+        if (shouldShowApiKeyPrompt || showApiKeyDialog) {
+            ApiKeyDialog(
+                currentCustomKey = savedCustomKey,
+                isUsingCustomKey = isUsingCustomKey,
+                onSaveKey = { key ->
+                    if (apiKeyManager.saveApiKey(key)) {
+                        showApiKeyDialog = false
+                        coroutineScope.launch {
+                            snackbarHostState.currentSnackbarData?.dismiss()
+                            snackbarHostState.showSnackbar(
+                                message = "Chave de API da NASA salva!",
+                                duration = SnackbarDuration.Short
+                            )
+                        }
+                        if (apodState is FeedViewModel.ApodState.Error) {
+                            viewModel.fetchApod()
+                        }
+                    }
+                },
+                onUseDemoKey = {
+                    apiKeyManager.useDemoKey()
+                    showApiKeyDialog = false
+                    coroutineScope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        snackbarHostState.showSnackbar(
+                            message = "Usando DEMO_KEY padrão",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                },
+                onDismiss = {
+                    apiKeyManager.dismissPrompt()
+                    showApiKeyDialog = false
+                }
+            )
         }
       }
 }
@@ -340,7 +444,8 @@ fun FeedScreen(
  */
 private data class DetailTarget(
     val item: FavoriteEntity,
-    val apod: ApodResponse? = null
+    val apod: ApodResponse? = null,
+    val initialImageIndex: Int = 0
 )
 
 @Composable
@@ -419,8 +524,19 @@ private fun FeedCard(
             .clickable(onClick = onClick)
     ) {
 
-        // Imagem ou Placeholder de Vídeo
-        if (apod.mediaType == "image" && apod.displayImageUrl.isNotBlank()) {
+        // Imagem ou Vídeo / iFrame ou Placeholder
+        val isVideoContent = apod.mediaType == "video" || apod.mediaType == "iframe" || apod.mediaType == "embed"
+        if (isVideoContent) {
+            VideoMediaCard(
+                mediaUrl = apod.effectiveMediaUrl,
+                thumbnailUrl = apod.displayThumbnailUrl,
+                title = apod.displayTitle,
+                permalinkUrl = apod.officialNasaUrl,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(230.dp)
+            )
+        } else if (apod.mediaType == "image" && apod.displayImageUrl.isNotBlank()) {
             OptimizedAsyncImage(
                 lowResUrl = apod.lowResImageUrl,
                 highResUrl = apod.highResImageUrl,
@@ -522,7 +638,7 @@ private fun FeedCard(
                     )
                 }
 
-                val targetUrl = apod.permalink ?: apod.url
+                val targetUrl = apod.officialNasaUrl
                 if (targetUrl.isNotBlank()) {
                     IconButton(
                         onClick = {
@@ -561,24 +677,31 @@ private fun BottomNavigation(
     ) {
 
         BottomNavigationItem(
-            icon = Icons.Default.Home,
-            label = "Feed",
+            icon = ImageVector.vectorResource(R.drawable.ic_telescope),
+            label = "APOD",
             selected = selectedTab == 0,
             onClick = { onTabSelected(0) }
         )
 
         BottomNavigationItem(
-            icon = Icons.Default.CalendarMonth,
-            label = "Histórico",
+            icon = Icons.Default.Newspaper,
+            label = "Notícias",
             selected = selectedTab == 1,
             onClick = { onTabSelected(1) }
         )
 
         BottomNavigationItem(
-            icon = Icons.Default.FavoriteBorder,
-            label = "Favoritos",
+            icon = Icons.Default.CalendarMonth,
+            label = "Histórico",
             selected = selectedTab == 2,
             onClick = { onTabSelected(2) }
+        )
+
+        BottomNavigationItem(
+            icon = Icons.Default.FavoriteBorder,
+            label = "Favoritos",
+            selected = selectedTab == 3,
+            onClick = { onTabSelected(3) }
         )
     }
 }
@@ -596,7 +719,7 @@ private fun BottomNavigationItem(
     Column(
         modifier = Modifier
             .clickable(onClick = onClick)
-            .padding(8.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
@@ -604,7 +727,7 @@ private fun BottomNavigationItem(
             imageVector = icon,
             contentDescription = label,
             tint = color,
-            modifier = Modifier.size(28.dp)
+            modifier = Modifier.size(26.dp)
         )
 
         Spacer(modifier = Modifier.height(4.dp))
@@ -612,7 +735,8 @@ private fun BottomNavigationItem(
         Text(
             text = label,
             color = color,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
+            maxLines = 1,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
         )
     }

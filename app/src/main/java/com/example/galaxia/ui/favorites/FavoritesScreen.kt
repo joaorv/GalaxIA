@@ -38,6 +38,9 @@ import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import com.example.galaxia.ui.components.FavoriteSkeletonList
+import com.example.galaxia.ui.components.VideoMediaCard
+import com.example.galaxia.data.local.displayThumbnailUrl
+import com.example.galaxia.data.local.officialNasaUrl
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -281,8 +284,19 @@ private fun FavoriteCard(
             .background(GalaxiaCardBackground)
             .clickable(onClick = onClick)
     ) {
-        // Imagem ou Placeholder de Vídeo
-        if (favorite.mediaType == "image" && !favorite.imageUrl.isNullOrBlank()) {
+        // Imagem ou Vídeo ou Placeholder
+        val isVideoContent = favorite.mediaType == "video" || favorite.mediaType == "iframe" || favorite.mediaType == "embed"
+        if (isVideoContent && !favorite.extraUrl.isNullOrBlank()) {
+            VideoMediaCard(
+                mediaUrl = favorite.extraUrl,
+                thumbnailUrl = favorite.displayThumbnailUrl,
+                title = favorite.title,
+                permalinkUrl = favorite.officialNasaUrl,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(230.dp)
+            )
+        } else if (favorite.mediaType == "image" && !favorite.imageUrl.isNullOrBlank()) {
             OptimizedAsyncImage(
                 lowResUrl = favorite.imageUrl,
                 highResUrl = favorite.displayHdUrl,
@@ -409,17 +423,27 @@ private fun FavoriteCard(
                     )
                 }
 
-                favorite.extraUrl?.let { extraUrl ->
+                val externalUrl = if (favorite.itemType == FavoriteType.APOD.name) {
+                    favorite.extraUrl
+                } else {
+                    favorite.officialNasaUrl.takeIf { it.isNotBlank() }
+                }
+
+                externalUrl?.let { targetUrl ->
                     IconButton(
                         onClick = {
                             try {
-                                uriHandler.openUri(extraUrl)
+                                uriHandler.openUri(targetUrl)
                             } catch (_: Exception) {}
                         }
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = "Abrir original em HD",
+                            contentDescription = if (favorite.itemType == FavoriteType.APOD.name) {
+                                "Abrir original em HD"
+                            } else {
+                                "Acessar fonte original"
+                            },
                             tint = GalaxiaCyan,
                             modifier = Modifier.size(22.dp)
                         )

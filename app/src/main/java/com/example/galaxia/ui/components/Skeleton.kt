@@ -417,3 +417,81 @@ fun FavoriteSkeletonList(
         }
     }
 }
+
+/**
+ * Skeleton que reproduz a estrutura de um card de Notícias e Curiosidades ([SpaceNewsCard]).
+ */
+@Composable
+fun SpaceNewsCardSkeleton(
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(GalaxiaCardBackground)
+    ) {
+        SkeletonBox(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(210.dp),
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+        )
+
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SkeletonTextLine(height = 14.dp, widthFraction = 0.38f)
+                SkeletonTextLine(height = 12.dp, widthFraction = 0.24f)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SkeletonTextLine(height = 19.dp, widthFraction = 0.88f)
+            Spacer(modifier = Modifier.height(6.dp))
+            SkeletonTextLine(height = 19.dp, widthFraction = 0.52f)
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            SkeletonTextLine(height = 13.dp, widthFraction = 1f)
+            Spacer(modifier = Modifier.height(6.dp))
+            SkeletonTextLine(height = 13.dp, widthFraction = 0.92f)
+            Spacer(modifier = Modifier.height(6.dp))
+            SkeletonTextLine(height = 13.dp, widthFraction = 0.65f)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SkeletonBox(modifier = Modifier.size(34.dp), shape = CircleShape)
+                SkeletonTextLine(height = 14.dp, widthFraction = 0.32f)
+            }
+        }
+    }
+}
+
+/**
+ * Lista de Skeletons para a aba de Notícias e Curiosidades.
+ */
+@Composable
+fun SpaceNewsSkeletonList(
+    modifier: Modifier = Modifier,
+    count: Int = 3
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        repeat(count) {
+            SpaceNewsCardSkeleton()
+        }
+    }
+}

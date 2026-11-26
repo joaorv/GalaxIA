@@ -25,18 +25,22 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.TravelExplore
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import com.example.galaxia.ui.components.SearchResultCardSkeleton
-import com.example.galaxia.ui.components.SearchResultSkeletonList
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -56,8 +60,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -65,8 +71,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.galaxia.data.model.ApodResponse
+import com.example.galaxia.data.model.GlobalContentType
+import com.example.galaxia.data.model.GlobalSearchItem
 import com.example.galaxia.ui.components.OptimizedAsyncImage
+import com.example.galaxia.ui.components.SearchResultCardSkeleton
+import com.example.galaxia.ui.components.SearchResultSkeletonList
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
@@ -79,22 +88,27 @@ import java.text.NumberFormat
 import java.util.Locale
 
 private val SUGGESTIONS = listOf(
-    "Nebulosa de Órion", "Aurora boreal", "Saturno", "Eclipse solar",
-    "Via Láctea", "Buraco negro", "Cometa", "Lua"
+    "Nebulosa de Órion",
+    "Aurora boreal",
+    "Saturno",
+    "Explosão solar",
+    "Via Láctea",
+    "Buraco negro",
+    "James Webb",
+    "Marte",
+    "Incêndio florestal",
+    "Vulcão"
 )
 
 /**
- * Tela de pesquisa de notícias (fotos do dia/APOD de todo o acervo da NASA).
- * O usuário pode digitar em português: o termo é traduzido para inglês antes da busca
- * e os resultados voltam traduzidos.
- *
- * @param favoriteIds ids salvos nos favoritos, para marcar o coração de cada resultado.
+ * Tela de Pesquisa Global integrada ao acervo oficial da NASA:
+ * NASA Image & Video Library, APOD, DONKI (clima espacial) e EONET (eventos naturais).
  */
 @Composable
 fun SearchScreen(
     favoriteIds: Set<String>,
-    onToggleFavorite: (ApodResponse) -> Unit,
-    onOpenDetail: (ApodResponse) -> Unit,
+    onToggleFavorite: (GlobalSearchItem) -> Unit,
+    onOpenDetail: (GlobalSearchItem) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     searchViewModel: SearchViewModel = viewModel()
@@ -104,12 +118,11 @@ fun SearchScreen(
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
 
-    // Abre com o teclado pronto, a não ser que já exista uma pesquisa anterior na tela
+    // Abre com o teclado pronto apenas quando não há pesquisa ativa
     LaunchedEffect(Unit) {
         if (query.isBlank()) focusRequester.requestFocus()
     }
 
-    // Surface bloqueia toques para o feed que fica por baixo
     Surface(
         modifier = modifier.fillMaxSize(),
         color = GalaxiaBackground
@@ -148,7 +161,7 @@ fun SearchScreen(
                     is SearchState.Empty -> MessageContent(
                         icon = Icons.Default.SearchOff,
                         title = "Nenhum resultado para “${current.query}”",
-                        message = "Tente outro termo, como o nome de um planeta, nebulosa ou fenômeno.",
+                        message = "Tente outro termo, como o nome de um planeta, missão, fenômeno solar ou evento natural.",
                         modifier = Modifier.align(Alignment.Center)
                     )
 
@@ -173,9 +186,9 @@ fun SearchScreen(
                         state = current,
                         favoriteIds = favoriteIds,
                         onToggleFavorite = onToggleFavorite,
-                        onOpenDetail = { apod ->
+                        onOpenDetail = { item ->
                             focusManager.clearFocus()
-                            onOpenDetail(apod)
+                            onOpenDetail(item)
                         },
                         onLoadMore = searchViewModel::loadMore,
                         onRetryLoadMore = searchViewModel::retry
@@ -216,7 +229,7 @@ private fun SearchBar(
             modifier = Modifier
                 .weight(1f)
                 .focusRequester(focusRequester),
-            placeholder = { Text("Pesquisar notícias", color = GalaxiaGray) },
+            placeholder = { Text("Buscar conteúdo", color = GalaxiaGray) },
             leadingIcon = {
                 Icon(Icons.Default.Search, contentDescription = null, tint = GalaxiaGray)
             },
@@ -269,8 +282,7 @@ private fun IdleContent(onSuggestionClick: (String) -> Unit) {
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Pesquise entre milhares de fotos e notícias astronômicas publicadas desde 1995. " +
-                "Pode escrever em português: a gente traduz para você.",
+            text = "Busque fotografias, vídeos, missões espaciais, clima solar e eventos naturais em todas as fontes oficiais da NASA. Pode digitar em português.",
             color = GalaxiaGray,
             fontSize = 14.sp,
             lineHeight = 20.sp
@@ -307,7 +319,7 @@ private fun IdleContent(onSuggestionClick: (String) -> Unit) {
 
 @Composable
 private fun MessageContent(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     modifier: Modifier = Modifier,
     message: String? = null,
@@ -342,17 +354,15 @@ private fun MessageContent(
 private fun ResultsContent(
     state: SearchState.Results,
     favoriteIds: Set<String>,
-    onToggleFavorite: (ApodResponse) -> Unit,
-    onOpenDetail: (ApodResponse) -> Unit,
+    onToggleFavorite: (GlobalSearchItem) -> Unit,
+    onOpenDetail: (GlobalSearchItem) -> Unit,
     onLoadMore: () -> Unit,
     onRetryLoadMore: () -> Unit
 ) {
     val listState = rememberLazyListState()
 
-    // Rola de volta ao topo quando uma nova pesquisa substitui os resultados
     LaunchedEffect(state.query) { listState.scrollToItem(0) }
 
-    // Pede a próxima página quando faltam poucos itens para o fim da lista
     val nearEnd by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -380,12 +390,12 @@ private fun ResultsContent(
             )
         }
 
-        items(items = state.items, key = { it.date }) { apod ->
+        items(items = state.items, key = { it.id }) { item ->
             SearchResultCard(
-                apod = apod,
-                isFavorite = "apod_${apod.date}" in favoriteIds,
-                onToggleFavorite = { onToggleFavorite(apod) },
-                onClick = { onOpenDetail(apod) }
+                item = item,
+                isFavorite = item.id in favoriteIds,
+                onToggleFavorite = { onToggleFavorite(item) },
+                onClick = { onOpenDetail(item) }
             )
         }
 
@@ -414,11 +424,13 @@ private fun ResultsContent(
 
 @Composable
 private fun SearchResultCard(
-    apod: ApodResponse,
+    item: GlobalSearchItem,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit
 ) {
+    val uriHandler = LocalUriHandler.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -433,57 +445,164 @@ private fun SearchResultCard(
             .clip(RoundedCornerShape(12.dp))
             .background(Color(0xFF161822))
 
-        if (apod.mediaType == "image" && apod.displayImageUrl.isNotBlank()) {
-            OptimizedAsyncImage(
-                lowResUrl = apod.lowResImageUrl,
-                highResUrl = null,
-                contentDescription = apod.alt ?: apod.displayTitle,
-                modifier = thumbModifier,
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Box(modifier = thumbModifier, contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Image, contentDescription = null, tint = GalaxiaGray)
+        val previewUrl = item.previewImageUrl
+        when {
+            item.contentType == GlobalContentType.VIDEO -> {
+                Box(modifier = thumbModifier) {
+                    if (!previewUrl.isNullOrBlank()) {
+                        OptimizedAsyncImage(
+                            lowResUrl = previewUrl,
+                            highResUrl = null,
+                            contentDescription = item.displayTitle,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize().background(Color(0xFF161822)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Videocam, contentDescription = null, tint = GalaxiaCyan)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.35f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .background(GalaxiaCyan, RoundedCornerShape(14.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Vídeo",
+                                tint = GalaxiaBackground,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            !previewUrl.isNullOrBlank() -> {
+                OptimizedAsyncImage(
+                    lowResUrl = previewUrl,
+                    highResUrl = null,
+                    contentDescription = item.displayTitle,
+                    modifier = thumbModifier,
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            else -> {
+                val placeholderIcon = when (item.contentType) {
+                    GlobalContentType.SPACE_WEATHER -> Icons.Default.WbSunny
+                    GlobalContentType.NATURAL_EVENT -> Icons.Default.Public
+                    GlobalContentType.SCIENTIFIC_RECORD -> Icons.Default.Science
+                    else -> Icons.Default.Image
+                }
+                val tintColor = when (item.contentType) {
+                    GlobalContentType.SPACE_WEATHER -> Color(0xFFFFB454)
+                    GlobalContentType.NATURAL_EVENT -> Color(0xFF4CC3FF)
+                    else -> GalaxiaCyan
+                }
+                Box(modifier = thumbModifier, contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = placeholderIcon,
+                        contentDescription = item.contentType.label,
+                        tint = tintColor,
+                        modifier = Modifier.size(30.dp)
+                    )
+                }
             }
         }
 
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = formatDateBr(apod.date),
-                color = GalaxiaGray,
-                fontSize = 12.sp
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(GalaxiaCyan.copy(alpha = 0.14f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "${item.source.label} • ${item.contentType.label}",
+                        color = GalaxiaCyan,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            if (item.date.isNotBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = formatDateBr(item.date),
+                    color = GalaxiaGray,
+                    fontSize = 11.sp
+                )
+            }
+
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = apod.displayTitle,
+                text = item.displayTitle,
                 color = GalaxiaWhite,
-                fontSize = 16.sp,
-                lineHeight = 21.sp,
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
-            if (apod.displayExplanation.isNotBlank()) {
+
+            if (item.displayDescription.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = apod.displayExplanation,
+                    text = item.displayDescription,
                     color = GalaxiaGray,
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
             }
         }
 
-        IconButton(onClick = onToggleFavorite) {
-            Icon(
-                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
-                tint = if (isFavorite) GalaxiaCyan else GalaxiaGray
-            )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
+                    tint = if (isFavorite) GalaxiaCyan else GalaxiaGray
+                )
+            }
+
+            if (item.sourceUrl.isNotBlank()) {
+                IconButton(
+                    onClick = {
+                        try {
+                            uriHandler.openUri(item.sourceUrl)
+                        } catch (_: Exception) {}
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                        contentDescription = "Abrir conteúdo original",
+                        tint = GalaxiaCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
         }
     }
 }

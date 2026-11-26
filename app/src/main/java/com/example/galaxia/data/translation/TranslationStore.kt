@@ -41,7 +41,7 @@ interface TranslationStore {
  */
 class FileTranslationStore(
     private val file: File,
-    private val maxEntries: Int = 600
+    private val maxEntries: Int = 1200
 ) : TranslationStore {
 
     constructor(context: Context) : this(File(context.filesDir, "translations_cache.json"))

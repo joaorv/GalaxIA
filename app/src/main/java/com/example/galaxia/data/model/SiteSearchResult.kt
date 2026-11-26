@@ -25,3 +25,26 @@ data class ApodSearchPage(
 ) {
     val hasMore: Boolean get() = page < totalPages
 }
+
+/**
+ * Filtro de pesquisa de mídias (Todos, Imagens).
+ */
+enum class SearchFilter {
+    ALL,
+    IMAGES
+}
+
+/**
+ * Verifica se um APOD atende ao filtro de mídia selecionado.
+ */
+fun ApodResponse.matchesFilter(filter: SearchFilter): Boolean {
+    val isVideo = mediaType == "video" || mediaType == "iframe" || mediaType == "embed" ||
+            ApodResponse.extractYouTubeVideoId(effectiveMediaUrl) != null ||
+            ApodResponse.extractVimeoVideoId(effectiveMediaUrl) != null ||
+            ApodResponse.isDirectVideoFileUrl(effectiveMediaUrl)
+
+    return when (filter) {
+        SearchFilter.ALL -> true
+        SearchFilter.IMAGES -> !isVideo
+    }
+}

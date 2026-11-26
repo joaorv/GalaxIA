@@ -55,4 +55,18 @@ class FavoriteRepository(
             true
         }
     }
+
+    /**
+     * Alterna o estado de favorito para itens genéricos (Notícias, Curiosidades, etc.).
+     * @return true se foi adicionado aos favoritos, false se foi removido.
+     */
+    suspend fun toggleFavoriteEntity(entity: FavoriteEntity, isCurrentlyFavorite: Boolean): Boolean {
+        return if (isCurrentlyFavorite) {
+            dataSource.deleteFavoriteById(entity.id)
+            false
+        } else {
+            dataSource.insertFavorite(entity)
+            true
+        }
+    }
 }

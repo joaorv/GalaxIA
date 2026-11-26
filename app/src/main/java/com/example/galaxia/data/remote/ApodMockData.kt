@@ -43,14 +43,32 @@ object ApodMockData {
             translatedTitle = "Galáxia de Andrômeda em Ultra Alta Definição",
             translatedExplanation = "Andrômeda (M31) é a galáxia espiral grande mais próxima da nossa Via Láctea, situada a aproximadamente 2,5 milhões de anos-luz de distância. Esta composição cobre mais de 200.000 anos-luz de extensão.",
             isTranslated = true
+        ),
+        ApodResponse(
+            date = "2026-09-28",
+            title = "Viagem Pela Nebulosa de Órion em 3D",
+            explanation = "Esta visualização fantástica em 3D guia os espectadores por uma simulação computacional baseada em dados reais observados pelos telescópios espaciais Hubble e Spitzer através do coração da Nebulosa de Órion.",
+            url = "https://www.youtube.com/embed/v_S1zO__8q4?rel=0",
+            mediaType = "video",
+            thumbnailUrl = "https://img.youtube.com/vi/v_S1zO__8q4/hqdefault.jpg",
+            copyright = "NASA / ESA / STScI",
+            translatedTitle = "Viagem Pela Nebulosa de Órion em 3D",
+            translatedExplanation = "Esta visualização fantástica em 3D guia os espectadores por uma simulação computacional baseada em dados reais observados pelos telescópios espaciais Hubble e Spitzer através do coração da Nebulosa de Órion.",
+            isTranslated = true
         )
     )
 
     fun getMockByDate(date: String): ApodResponse {
-        return sampleApods.find { it.date == date } ?: sampleApods.first().copy(
+        return sampleApods.find { it.date == date } ?: ApodResponse(
             date = date,
-            title = "Foto Astronômica do Dia ($date)",
-            translatedTitle = "Foto Astronômica do Dia ($date)"
+            title = "Publicação Astronômica ($date)",
+            explanation = "Conteúdo publicado pela NASA no dia $date.",
+            url = "",
+            mediaType = "image",
+            permalink = "https://science.nasa.gov/picture-of-the-day/",
+            translatedTitle = "Publicação Astronômica ($date)",
+            translatedExplanation = "Conteúdo publicado pela NASA no dia $date.",
+            isTranslated = true
         )
     }
 }

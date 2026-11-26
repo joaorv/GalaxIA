@@ -1,20 +1,7 @@
-import java.util.Properties
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
-
-// Leitura do arquivo .env da raiz do projeto
-val envFile = rootProject.file(".env")
-val envProperties = Properties()
-if (envFile.exists()) {
-    envFile.inputStream().use { envProperties.load(it) }
-}
-
-val nasaApiKey: String = envProperties.getProperty("NASA_API_KEY")
-    ?: System.getenv("NASA_API_KEY")
-    ?: "DEMO_KEY"
 
 android {
     namespace = "com.example.galaxia"
@@ -24,14 +11,14 @@ android {
 
     defaultConfig {
         applicationId = "com.example.galaxia"
-        minSdk = 37
+        minSdk = 23
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "NASA_API_KEY", "\"$nasaApiKey\"")
+        buildConfigField("String", "NASA_API_KEY", "\"DEMO_KEY\"")
     }
 
     buildTypes {
@@ -66,6 +53,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network)
     implementation(libs.mlkit.translate)
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.ui)
     testImplementation(libs.junit)
     implementation(libs.androidx.compose.material.icons.extended)
     androidTestImplementation(platform(libs.androidx.compose.bom))

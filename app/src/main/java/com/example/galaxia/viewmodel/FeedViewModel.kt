@@ -175,6 +175,20 @@ class FeedViewModel(
         }
     }
 
+    fun toggleFavoriteItem(entity: FavoriteEntity) {
+        viewModelScope.launch {
+            try {
+                val isCurrentlyFavorite = entity.id in _favoriteIds.value
+                val added = favoriteRepository.toggleFavoriteEntity(entity, isCurrentlyFavorite)
+                val message = if (added) "Item adicionado aos favoritos" else "Item removido dos favoritos"
+                _userMessage.emit(message)
+            } catch (e: Exception) {
+                Log.e("FeedViewModel", "Erro ao alternar favorito", e)
+                _userMessage.emit("Erro ao atualizar favoritos")
+            }
+        }
+    }
+
     fun removeFavoriteById(id: String) {
         viewModelScope.launch {
             try {

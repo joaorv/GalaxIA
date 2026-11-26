@@ -21,6 +21,8 @@ data class ApodResponse(
     val alt: String? = null,
     val url: String = "",
     val hdurl: String? = null,
+    @SerializedName("thumbnail_url")
+    val thumbnailUrl: String? = null,
     @SerializedName("basic_html")
     val basicHtml: String? = null,
     @SerializedName("basic_html_url")
@@ -102,4 +104,159 @@ data class ApodResponse(
                 .replace(Regex("(?i)^Explanation:\\s*"), "")
                 .trim()
         }
+
+    /**
+     * Retorna o permalink original da publicação na NASA.
+     * Utilizado EXCLUSIVAMENTE para o botão de ação "Abrir no site da NASA" / Visitar NASA.
+     */
+    val officialNasaUrl: String
+        get() {
+            val candidate = permalink?.takeIf { it.isNotBlank() } ?: url
+            return if (candidate.contains("science.nasa.gov") || candidate.contains("apod.nasa.gov")) {
+                candidate
+            } else {
+                "https://science.nasa.gov/picture-of-the-day/"
+            }
+        }
+
+    /**
+     * Retorna a URL real de mídia para exibição e reprodução.
+     * Inspeciona 'url' e inspeciona o campo 'basic_html' da nova API WordPress da NASA
+     * para extrair iFrames, links de YouTube, Vimeo ou arquivos de vídeo diretos.
+     */
+    val effectiveMediaUrl: String
+        get() {
+            // 1. Se 'url' já for YouTube, Vimeo ou arquivo de vídeo direto, utiliza 'url'
+            val ytId = extractYouTubeVideoId(url)
+            if (ytId != null) return url
+            val vimeoId = extractVimeoVideoId(url)
+            if (vimeoId != null) return url
+            if (isDirectVideoFileUrl(url)) return url
+
+            // 2. Se 'basic_html' estiver presente no JSON da NASA, extrai o iFrame/vídeo incorporado
+            if (!basicHtml.isNullOrBlank()) {
+                val extracted = extractMediaUrlFromHtml(basicHtml)
+                if (!extracted.isNullOrBlank()) {
+                    return extracted
+                }
+            }
+
+            return url
+        }
+
+    /**
+     * Retorna a URL da miniatura para exibição de vídeos.
+     * Tenta utilizar 'thumbnail_url' da API, ou deriva a miniatura de vídeos do YouTube se omitido.
+     */
+    val displayThumbnailUrl: String?
+        get() {
+            if (!thumbnailUrl.isNullOrBlank()) return thumbnailUrl
+            val targetUrl = effectiveMediaUrl
+            val ytId = extractYouTubeVideoId(targetUrl) ?: extractYouTubeVideoId(url)
+            if (ytId != null) {
+                return "https://img.youtube.com/vi/$ytId/hqdefault.jpg"
+            }
+            return displayImageUrl.takeIf { it.isNotBlank() }
+        }
+
+    /**
+     * Identifica se a mídia é um vídeo diretamente reproduzível (MP4, WebM, M3U8, MOV).
+     */
+    val isDirectVideoUrl: Boolean
+        get() = isDirectVideoFileUrl(effectiveMediaUrl) || isDirectVideoFileUrl(url)
+
+    /**
+     * Formata a URL do vídeo para incorporação em iFrame/Player (YouTube/Vimeo/Embed).
+     */
+    val videoEmbedUrl: String
+        get() {
+            val targetUrl = effectiveMediaUrl
+            val ytId = extractYouTubeVideoId(targetUrl) ?: extractYouTubeVideoId(url)
+            if (ytId != null) {
+                return "https://www.youtube.com/embed/$ytId?autoplay=1&rel=0&enablejsapi=1"
+            }
+            val vimeoId = extractVimeoVideoId(targetUrl) ?: extractVimeoVideoId(url)
+            if (vimeoId != null) {
+                return "https://player.vimeo.com/video/$vimeoId?autoplay=1"
+            }
+            return targetUrl
+        }
+
+    companion object {
+        fun extractYouTubeVideoId(url: String): String? {
+            if (url.isBlank()) return null
+            val pattern = Regex(
+                "(?:youtube(?:-nocookie)?\\.com/(?:[^/]+/.+/|(?:v|e(?:mbed)?|shorts)/|.*[?&]v=)|youtu\\.be/)([^\"&?/#\\s]{11})",
+                RegexOption.IGNORE_CASE
+            )
+            return pattern.find(url)?.groupValues?.getOrNull(1)
+        }
+
+        fun extractVimeoVideoId(url: String): String? {
+            if (url.isBlank()) return null
+            val pattern = Regex("(?:vimeo\\.com/(?:video/)?)([0-9]+)", RegexOption.IGNORE_CASE)
+            return pattern.find(url)?.groupValues?.getOrNull(1)
+        }
+
+        /**
+         * Extrai a URL real de mídia de um trecho HTML (como o 'basic_html' fornecido pela NASA).
+         */
+        fun extractMediaUrlFromHtml(html: String): String? {
+            if (html.isBlank()) return null
+
+            // 1. Procura por <iframe src="...">
+            val iframeRegex = Regex("""<iframe[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            val iframeMatch = iframeRegex.find(html)?.groupValues?.getOrNull(1)
+            if (!iframeMatch.isNullOrBlank()) {
+                return fixRelativeUrl(iframeMatch)
+            }
+
+            // 2. Procura por <video src="..."> ou <source src="...">
+            val videoRegex = Regex("""<(?:video|source)[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+            val videoMatch = videoRegex.find(html)?.groupValues?.getOrNull(1)
+            if (!videoMatch.isNullOrBlank()) {
+                return fixRelativeUrl(videoMatch)
+            }
+
+            // 3. Procura por links de YouTube soltos no HTML
+            val ytRegex = Regex("""https?://(?:www\.)?(?:youtube\.com/(?:embed/|v/|watch\?v=)|youtu\.be/)[a-zA-Z0-9_-]{11}""", RegexOption.IGNORE_CASE)
+            val ytMatch = ytRegex.find(html)?.value
+            if (!ytMatch.isNullOrBlank()) {
+                return ytMatch
+            }
+
+            // 4. Procura por links de Vimeo soltos no HTML
+            val vimeoRegex = Regex("""https?://(?:player\.)?vimeo\.com/(?:video/)?[0-9]+""", RegexOption.IGNORE_CASE)
+            val vimeoMatch = vimeoRegex.find(html)?.value
+            if (!vimeoMatch.isNullOrBlank()) {
+                return vimeoMatch
+            }
+
+            // 5. Procura por arquivos diretos de vídeo (.mp4, .webm, .m3u8, .mov)
+            val directRegex = Regex("""https?://[^\s"'<>]+\.(?:mp4|webm|m3u8|mov)(?:\?[^\s"'<>]*)?""", RegexOption.IGNORE_CASE)
+            val directMatch = directRegex.find(html)?.value
+            if (!directMatch.isNullOrBlank()) {
+                return directMatch
+            }
+
+            return null
+        }
+
+        fun isDirectVideoFileUrl(url: String): Boolean {
+            if (url.isBlank()) return false
+            val lower = url.lowercase()
+            return lower.endsWith(".mp4") || lower.endsWith(".webm") ||
+                   lower.endsWith(".m3u8") || lower.endsWith(".m4v") ||
+                   lower.endsWith(".mov") || lower.contains("video.media.nasa.gov") ||
+                   lower.contains(".mp4?") || lower.contains(".webm?")
+        }
+
+        private fun fixRelativeUrl(url: String): String {
+            return when {
+                url.startsWith("//") -> "https:$url"
+                url.startsWith("/") -> "https://science.nasa.gov$url"
+                else -> url
+            }
+        }
+    }
 }
