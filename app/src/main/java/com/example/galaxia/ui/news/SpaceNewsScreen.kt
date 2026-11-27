@@ -23,8 +23,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -42,12 +44,16 @@ import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -61,6 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
@@ -73,13 +80,20 @@ import com.example.galaxia.data.model.NewsCategory
 import com.example.galaxia.data.model.NewsSortOrder
 import com.example.galaxia.data.model.SpaceNewsItem
 import com.example.galaxia.data.model.subTopics
+import com.example.galaxia.ui.components.CollapsibleHeaderContainer
+import com.example.galaxia.ui.components.CollapsibleHeaderState
 import com.example.galaxia.ui.components.OptimizedAsyncImage
+import com.example.galaxia.ui.components.ScrollToTopButton
 import com.example.galaxia.ui.components.SpaceNewsSkeletonList
+import com.example.galaxia.ui.components.rememberCollapsibleHeaderState
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
+import com.example.galaxia.ui.theme.GalaxiaSurfaceElevated
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.theme.LocalUiMetrics
+import com.example.galaxia.ui.theme.responsiveContentWidth
 import com.example.galaxia.ui.util.formatDateBr
 import com.example.galaxia.viewmodel.SpaceNewsViewModel
 import com.example.galaxia.viewmodel.SpaceNewsViewModel.SpaceNewsUiState
@@ -90,6 +104,7 @@ fun SpaceNewsScreen(
     favoriteIds: Set<String>,
     onToggleFavorite: (SpaceNewsItem) -> Unit,
     onOpenDetail: (SpaceNewsItem, Int) -> Unit,
+    headerState: CollapsibleHeaderState,
     newsViewModel: SpaceNewsViewModel = viewModel()
 ) {
     val selectedCategory by newsViewModel.selectedCategory.collectAsState()
@@ -97,6 +112,8 @@ fun SpaceNewsScreen(
     val selectedSortOrder by newsViewModel.selectedSortOrder.collectAsState()
     val uiState by newsViewModel.uiState.collectAsState()
     val categoryStates by newsViewModel.categoryStates.collectAsState()
+    val isRefreshing by newsViewModel.isRefreshing.collectAsState()
+    val metrics = LocalUiMetrics.current
 
     val categories = NewsCategory.entries
     val categoryPagerState = rememberPagerState(
@@ -104,11 +121,16 @@ fun SpaceNewsScreen(
         pageCount = { categories.size }
     )
     val categoryChipsState = rememberLazyListState()
+    val subFiltersHeaderState = rememberCollapsibleHeaderState()
     val coroutineScope = rememberCoroutineScope()
 
     val displayedCategory = categories[categoryPagerState.currentPage]
     val currentSubTopics = displayedCategory.subTopics
     val activeSubTopic = selectedSubTopics[displayedCategory] ?: currentSubTopics.firstOrNull()
+
+    LaunchedEffect(categoryPagerState.currentPage) {
+        subFiltersHeaderState.expand()
+    }
 
     LaunchedEffect(categoryPagerState.settledPage) {
         val pageCategory = categories[categoryPagerState.settledPage]
@@ -125,39 +147,26 @@ fun SpaceNewsScreen(
             .fillMaxSize()
             .background(GalaxiaBackground)
     ) {
-        // Cabeçalho da seção + atualização manual
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 12.dp, top = 4.dp, bottom = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Notícias e Curiosidades",
-                color = GalaxiaWhite,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
+        // Cabeçalho compacto da seção (atualização via Pull to Refresh)
+        Text(
+            text = "Notícias e Curiosidades",
+            color = GalaxiaWhite,
+            fontSize = if (metrics.isCompactScreen) 18.sp else 20.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(
+                start = metrics.horizontalPadding,
+                end = metrics.horizontalPadding,
+                top = 2.dp,
+                bottom = 6.dp
             )
-
-            IconButton(
-                onClick = { newsViewModel.refresh() },
-                enabled = uiState !is SpaceNewsUiState.Loading
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Atualizar notícias",
-                    tint = if (uiState is SpaceNewsUiState.Loading) GalaxiaGray else GalaxiaCyan
-                )
-            }
-        }
+        )
 
         // Chips de Categoria principal sincronizados com o deslize
         LazyRow(
             state = categoryChipsState,
-            contentPadding = PaddingValues(horizontal = 20.dp),
+            contentPadding = PaddingValues(horizontal = metrics.horizontalPadding),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(bottom = if (currentSubTopics.isNotEmpty()) 6.dp else 10.dp)
+            modifier = Modifier.padding(bottom = if (currentSubTopics.isNotEmpty()) 4.dp else 8.dp)
         ) {
             itemsIndexed(categories) { index, category ->
                 val selected = index == categoryPagerState.currentPage
@@ -193,69 +202,73 @@ fun SpaceNewsScreen(
 
         // Chips secundários de temas + ordenação (Mais recentes / Mais antigas)
         if (currentSubTopics.isNotEmpty()) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 6.dp)
-            ) {
-                items(currentSubTopics, key = { it.id }) { subTopic ->
-                    val isSubSelected = subTopic.id == activeSubTopic?.id
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (isSubSelected) GalaxiaCyan.copy(alpha = 0.2f) else GalaxiaCardBackground
-                            )
-                            .clickable { newsViewModel.selectSubTopic(subTopic) }
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
+            CollapsibleHeaderContainer(state = subFiltersHeaderState) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = metrics.horizontalPadding),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(bottom = 4.dp)
                     ) {
-                        Text(
-                            text = subTopic.label,
-                            color = if (isSubSelected) GalaxiaCyan else GalaxiaGray,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium
-                        )
+                        items(currentSubTopics, key = { it.id }) { subTopic ->
+                            val isSubSelected = subTopic.id == activeSubTopic?.id
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(
+                                        if (isSubSelected) GalaxiaCyan.copy(alpha = 0.2f) else GalaxiaCardBackground
+                                    )
+                                    .clickable { newsViewModel.selectSubTopic(subTopic) }
+                                    .padding(horizontal = 11.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = subTopic.label,
+                                    color = if (isSubSelected) GalaxiaCyan else GalaxiaGray,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSubSelected) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
+                        }
                     }
-                }
-            }
 
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(bottom = 8.dp)
-            ) {
-                items(NewsSortOrder.entries, key = { it.name }) { order ->
-                    val isSelected = selectedSortOrder == order
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { newsViewModel.selectSortOrder(order) },
-                        label = {
-                            Text(
-                                text = order.label,
-                                fontSize = 12.sp
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = when (order) {
-                                    NewsSortOrder.NEWEST -> Icons.Default.ArrowDownward
-                                    NewsSortOrder.OLDEST -> Icons.Default.ArrowUpward
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = metrics.horizontalPadding),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    ) {
+                        items(NewsSortOrder.entries, key = { it.name }) { order ->
+                            val isSelected = selectedSortOrder == order
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { newsViewModel.selectSortOrder(order) },
+                                label = {
+                                    Text(
+                                        text = order.label,
+                                        fontSize = 12.sp
+                                    )
                                 },
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp)
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = when (order) {
+                                            NewsSortOrder.NEWEST -> Icons.Default.ArrowDownward
+                                            NewsSortOrder.OLDEST -> Icons.Default.ArrowUpward
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = GalaxiaCardBackground,
+                                    labelColor = GalaxiaGray,
+                                    iconColor = GalaxiaGray,
+                                    selectedContainerColor = GalaxiaCyan.copy(alpha = 0.2f),
+                                    selectedLabelColor = GalaxiaCyan,
+                                    selectedLeadingIconColor = GalaxiaCyan
+                                ),
+                                border = null,
+                                shape = RoundedCornerShape(10.dp)
                             )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            containerColor = GalaxiaCardBackground,
-                            labelColor = GalaxiaGray,
-                            iconColor = GalaxiaGray,
-                            selectedContainerColor = GalaxiaCyan.copy(alpha = 0.2f),
-                            selectedLabelColor = GalaxiaCyan,
-                            selectedLeadingIconColor = GalaxiaCyan
-                        ),
-                        border = null,
-                        shape = RoundedCornerShape(10.dp)
-                    )
+                        }
+                    }
                 }
             }
         }
@@ -277,9 +290,12 @@ fun SpaceNewsScreen(
                 pageCategory = pageCategory,
                 pageState = pageState,
                 isActiveCategory = pageCategory == selectedCategory,
+                isRefreshing = isRefreshing && pageCategory == selectedCategory,
                 activeSubTopicId = activeSubTopicId,
                 selectedSortOrder = selectedSortOrder,
                 favoriteIds = favoriteIds,
+                headerState = headerState,
+                subFiltersHeaderState = subFiltersHeaderState,
                 onRefresh = { newsViewModel.refresh() },
                 onLoadNextPage = { newsViewModel.loadNextPage() },
                 onToggleFavorite = onToggleFavorite,
@@ -289,25 +305,35 @@ fun SpaceNewsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CategoryNewsPage(
     pageCategory: NewsCategory,
     pageState: SpaceNewsUiState,
     isActiveCategory: Boolean,
+    isRefreshing: Boolean,
     activeSubTopicId: String?,
     selectedSortOrder: NewsSortOrder,
     favoriteIds: Set<String>,
+    headerState: CollapsibleHeaderState,
+    subFiltersHeaderState: CollapsibleHeaderState,
     onRefresh: () -> Unit,
     onLoadNextPage: () -> Unit,
     onToggleFavorite: (SpaceNewsItem) -> Unit,
     onOpenDetail: (SpaceNewsItem, Int) -> Unit
 ) {
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val metrics = LocalUiMetrics.current
 
     LaunchedEffect(activeSubTopicId, selectedSortOrder) {
         if (isActiveCategory) {
             listState.scrollToItem(0)
         }
+    }
+
+    val showScrollToTop by remember {
+        derivedStateOf { listState.firstVisibleItemIndex >= 2 }
     }
 
     val shouldLoadMore by remember(pageState, isActiveCategory) {
@@ -329,121 +355,216 @@ private fun CategoryNewsPage(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        when (pageState) {
-            is SpaceNewsUiState.Loading -> {
-                SpaceNewsSkeletonList(modifier = Modifier.fillMaxSize())
+    val hasSubFilters = pageCategory.subTopics.isNotEmpty()
+    val isSuccessState = pageState is SpaceNewsUiState.Success
+
+    LaunchedEffect(isActiveCategory, isSuccessState) {
+        if (isActiveCategory && !isSuccessState) {
+            subFiltersHeaderState.expand()
+        }
+    }
+
+    val newsNestedScroll = remember(headerState, listState, pageState, isActiveCategory) {
+        headerState.createNestedScrollConnection(
+            scope = coroutineScope,
+            canCollapse = {
+                isActiveCategory &&
+                    pageState is SpaceNewsUiState.Success &&
+                    (listState.canScrollForward || listState.canScrollBackward)
+            },
+            isAtTop = {
+                listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
             }
-            is SpaceNewsUiState.Error -> {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = pageState.message,
-                        color = GalaxiaGray,
-                        fontSize = 15.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    Button(
-                        onClick = onRefresh,
-                        colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+        )
+    }
+    val subFiltersNestedScroll = remember(subFiltersHeaderState, listState, pageState, isActiveCategory, hasSubFilters) {
+        subFiltersHeaderState.createNestedScrollConnection(
+            scope = coroutineScope,
+            canCollapse = {
+                hasSubFilters &&
+                    isActiveCategory &&
+                    pageState is SpaceNewsUiState.Success &&
+                    (listState.canScrollForward || listState.canScrollBackward)
+            },
+            isAtTop = {
+                listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+            }
+        )
+    }
+    val pullToRefreshState = rememberPullToRefreshState()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(newsNestedScroll)
+            .then(if (hasSubFilters) Modifier.nestedScroll(subFiltersNestedScroll) else Modifier)
+    ) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = onRefresh,
+            state = pullToRefreshState,
+            modifier = Modifier.fillMaxSize(),
+            indicator = {
+                PullToRefreshDefaults.Indicator(
+                    state = pullToRefreshState,
+                    isRefreshing = isRefreshing,
+                    containerColor = GalaxiaCardBackground,
+                    color = GalaxiaCyan,
+                    modifier = Modifier.align(Alignment.TopCenter)
+                )
+            }
+        ) {
+            when (pageState) {
+                is SpaceNewsUiState.Loading -> {
+                    SpaceNewsSkeletonList(modifier = Modifier.fillMaxSize())
+                }
+                is SpaceNewsUiState.Error -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, tint = GalaxiaBackground)
-                        Spacer(Modifier.size(8.dp))
-                        Text("Tentar Novamente", color = GalaxiaBackground)
-                    }
-                }
-            }
-            is SpaceNewsUiState.Empty -> {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        imageVector = categoryIcon(pageCategory),
-                        contentDescription = null,
-                        tint = GalaxiaGray.copy(alpha = 0.6f),
-                        modifier = Modifier.size(56.dp)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = "Nenhum conteúdo disponível em ${pageCategory.label} no momento.",
-                        color = GalaxiaGray,
-                        fontSize = 15.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-            is SpaceNewsUiState.Success -> {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    if (pageState.isFromOfflineCache) {
-                        item(key = "offline_banner") {
-                            OfflineCacheBanner()
+                        Column(
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = pageState.message,
+                                color = GalaxiaGray,
+                                fontSize = 15.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(bottom = 16.dp)
+                            )
+                            Button(
+                                onClick = onRefresh,
+                                colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, tint = GalaxiaBackground)
+                                Spacer(Modifier.size(8.dp))
+                                Text("Tentar Novamente", color = GalaxiaBackground)
+                            }
                         }
                     }
-
-                    itemsIndexed(
-                        items = pageState.items,
-                        key = { _, item -> item.id }
-                    ) { index, item ->
-                        val isHero = index == 0 &&
-                            item.category == NewsCategory.NASA_HIGHLIGHTS &&
-                            !item.imageUrl.isNullOrBlank()
-
-                        SpaceNewsCard(
-                            item = item,
-                            isHero = isHero,
-                            isFavorite = item.id in favoriteIds,
-                            onToggleFavorite = { onToggleFavorite(item) },
-                            onClick = { selectedItem, pageIndex ->
-                                onOpenDetail(selectedItem, pageIndex)
-                            }
-                        )
+                }
+                is SpaceNewsUiState.Empty -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState()),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = categoryIcon(pageCategory),
+                                contentDescription = null,
+                                tint = GalaxiaGray.copy(alpha = 0.6f),
+                                modifier = Modifier.size(56.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Nenhum conteúdo disponível em ${pageCategory.label} no momento.",
+                                color = GalaxiaGray,
+                                fontSize = 15.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
+                }
+                is SpaceNewsUiState.Success -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .responsiveContentWidth(metrics.maxContentWidth),
+                            contentPadding = PaddingValues(
+                                start = metrics.horizontalPadding,
+                                end = metrics.horizontalPadding,
+                                top = 4.dp,
+                                bottom = 16.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(metrics.cardSpacing)
+                        ) {
+                            if (pageState.isFromOfflineCache) {
+                                item(key = "offline_banner") {
+                                    OfflineCacheBanner()
+                                }
+                            }
 
-                    if (pageState.isLoadingMore) {
-                        item(key = "loading_more") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    color = GalaxiaCyan,
-                                    modifier = Modifier.size(28.dp),
-                                    strokeWidth = 2.5.dp
+                            itemsIndexed(
+                                items = pageState.items,
+                                key = { _, item -> item.id }
+                            ) { index, item ->
+                                val isHero = index == 0 &&
+                                    item.category == NewsCategory.NASA_HIGHLIGHTS &&
+                                    !item.imageUrl.isNullOrBlank()
+
+                                SpaceNewsCard(
+                                    item = item,
+                                    isHero = isHero,
+                                    isFavorite = item.id in favoriteIds,
+                                    onToggleFavorite = { onToggleFavorite(item) },
+                                    onClick = { selectedItem, pageIndex ->
+                                        onOpenDetail(selectedItem, pageIndex)
+                                    }
                                 )
                             }
-                        }
-                    } else if (pageState.hasMore) {
-                        item(key = "load_more_button") {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                TextButton(onClick = onLoadNextPage) {
-                                    Text(
-                                        text = "Carregar mais",
-                                        color = GalaxiaCyan,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
+
+                            if (pageState.isLoadingMore) {
+                                item(key = "loading_more") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 12.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = GalaxiaCyan,
+                                            modifier = Modifier.size(28.dp),
+                                            strokeWidth = 2.5.dp
+                                        )
+                                    }
+                                }
+                            } else if (pageState.hasMore) {
+                                item(key = "load_more_button") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        TextButton(onClick = onLoadNextPage) {
+                                            Text(
+                                                text = "Carregar mais",
+                                                color = GalaxiaCyan,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
+
+                        ScrollToTopButton(
+                            visible = showScrollToTop,
+                            onClick = {
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(0)
+                                    launch { headerState.expand() }
+                                    launch { subFiltersHeaderState.expand() }
+                                }
+                            },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp)
+                        )
                     }
                 }
             }
@@ -487,6 +608,7 @@ private fun SpaceNewsCard(
     onClick: (SpaceNewsItem, Int) -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
+    val metrics = LocalUiMetrics.current
     val accent = accentColorFor(item)
     val badgeIcon = iconForItem(item)
     val images = item.allImageUrls
@@ -496,12 +618,12 @@ private fun SpaceNewsCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
             .clickable { onClick(item, currentPage) }
     ) {
         if (images.isNotEmpty()) {
-            val imageHeight = if (isHero) 235.dp else 205.dp
+            val imageHeight = if (isHero) metrics.heroMediaHeight else metrics.cardMediaHeight
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -514,7 +636,7 @@ private fun SpaceNewsCard(
                         contentDescription = item.displayTitle,
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color(0xFF161822)),
+                            .background(GalaxiaSurfaceElevated),
                         contentScale = ContentScale.Crop
                     )
                 } else {
@@ -528,7 +650,7 @@ private fun SpaceNewsCard(
                             contentDescription = "${item.displayTitle} (${page + 1} de ${images.size})",
                             modifier = Modifier
                                 .fillMaxSize()
-                                .background(Color(0xFF161822)),
+                                .background(GalaxiaSurfaceElevated),
                             contentScale = ContentScale.Crop
                         )
                     }
@@ -544,7 +666,7 @@ private fun SpaceNewsCard(
                     ) {
                         Text(
                             text = "${pagerState.currentPage + 1} / ${images.size}",
-                            color = GalaxiaWhite,
+                            color = Color.White,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -568,7 +690,7 @@ private fun SpaceNewsCard(
                                     .size(if (isCurrent) 7.dp else 5.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (isCurrent) GalaxiaCyan else GalaxiaWhite.copy(alpha = 0.5f)
+                                        if (isCurrent) GalaxiaCyan else Color.White.copy(alpha = 0.55f)
                                     )
                             )
                         }
@@ -613,7 +735,7 @@ private fun SpaceNewsCard(
             )
         }
 
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(metrics.cardContentPadding)) {
             // Linha de categoria e data
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -721,7 +843,7 @@ private fun SpaceNewsCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF171923))
+                                .background(GalaxiaSurfaceElevated)
                                 .padding(horizontal = 9.dp, vertical = 4.dp)
                         ) {
                             Text(
@@ -744,7 +866,7 @@ private fun SpaceNewsCard(
                     color = GalaxiaGray,
                     fontSize = 14.sp,
                     lineHeight = 21.sp,
-                    maxLines = if (isHero) 4 else 3,
+                    maxLines = if (isHero) metrics.cardDescriptionMaxLines + 1 else metrics.cardDescriptionMaxLines,
                     overflow = TextOverflow.Ellipsis
                 )
             }
@@ -807,6 +929,7 @@ private fun iconForItem(item: SpaceNewsItem): ImageVector = when (item.accentKey
     else -> categoryIcon(item.category)
 }
 
+@Composable
 private fun accentColorFor(item: SpaceNewsItem): Color = when (item.accentKey) {
     "flr", "cme", "sep" -> Color(0xFFFFB454)
     "gst", "rbe", "mpc" -> Color(0xFFBD93F9)

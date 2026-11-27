@@ -46,7 +46,9 @@ import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
+import com.example.galaxia.ui.theme.GalaxiaSurfaceElevated
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.theme.LocalGalaxiaColors
 
 /**
  * Pop-up de configuração e recomendação da chave de API da NASA.
@@ -109,8 +111,9 @@ fun ApiKeyDialog(
             }
 
             // Badge de status atual
-            val statusColor = if (isUsingCustomKey) Color(0xFF5EEB9B) else Color(0xFFFFB454)
-            val statusBg = if (isUsingCustomKey) Color(0xFF1F3B2C) else Color(0xFF332615)
+            val palette = LocalGalaxiaColors.current
+            val statusColor = if (isUsingCustomKey) palette.statusSuccessText else palette.statusWarningText
+            val statusBg = if (isUsingCustomKey) palette.statusSuccessBg else palette.statusWarningBg
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
@@ -132,7 +135,7 @@ fun ApiKeyDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF161822))
+                    .background(GalaxiaSurfaceElevated)
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -204,8 +207,8 @@ fun ApiKeyDialog(
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color(0xFF161822),
-                    unfocusedContainerColor = Color(0xFF161822),
+                    focusedContainerColor = GalaxiaSurfaceElevated,
+                    unfocusedContainerColor = GalaxiaSurfaceElevated,
                     focusedTextColor = GalaxiaWhite,
                     unfocusedTextColor = GalaxiaWhite,
                     cursorColor = GalaxiaCyan,

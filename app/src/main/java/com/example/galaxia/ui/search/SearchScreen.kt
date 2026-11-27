@@ -20,9 +20,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
@@ -41,19 +43,28 @@ import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,18 +85,27 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.galaxia.data.model.GlobalContentType
 import com.example.galaxia.data.model.GlobalSearchItem
 import com.example.galaxia.ui.components.OptimizedAsyncImage
+import com.example.galaxia.ui.components.ScrollToTopButton
 import com.example.galaxia.ui.components.SearchResultCardSkeleton
 import com.example.galaxia.ui.components.SearchResultSkeletonList
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
+import com.example.galaxia.ui.theme.GalaxiaSurfaceElevated
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.theme.LocalUiMetrics
+import com.example.galaxia.ui.theme.responsiveContentWidth
 import com.example.galaxia.ui.util.formatDateBr
 import com.example.galaxia.viewmodel.SearchViewModel
 import com.example.galaxia.viewmodel.SearchViewModel.SearchState
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.util.Locale
+import kotlin.time.Duration.Companion.milliseconds
 
 private val SUGGESTIONS = listOf(
     "Nebulosa de Órion",
@@ -104,6 +124,7 @@ private val SUGGESTIONS = listOf(
  * Tela de Pesquisa Global integrada ao acervo oficial da NASA:
  * NASA Image & Video Library, APOD, DONKI (clima espacial) e EONET (eventos naturais).
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SearchScreen(
     favoriteIds: Set<String>,
@@ -115,85 +136,155 @@ fun SearchScreen(
 ) {
     val query by searchViewModel.query.collectAsState()
     val state by searchViewModel.state.collectAsState()
+    val isRefreshing by searchViewModel.isRefreshing.collectAsState()
     val focusManager = LocalFocusManager.current
     val focusRequester = remember { FocusRequester() }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val metrics = LocalUiMetrics.current
 
     // Abre com o teclado pronto apenas quando não há pesquisa ativa
     LaunchedEffect(Unit) {
         if (query.isBlank()) focusRequester.requestFocus()
     }
 
+    LaunchedEffect(searchViewModel) {
+        searchViewModel.userMessage.collectLatest { message ->
+            snackbarHostState.currentSnackbarData?.dismiss()
+            coroutineScope {
+                val showJob = launch {
+                    snackbarHostState.showSnackbar(
+                        message = message,
+                        duration = SnackbarDuration.Indefinite
+                    )
+                }
+                delay(1800.milliseconds)
+                showJob.cancel()
+                snackbarHostState.currentSnackbarData?.dismiss()
+            }
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = GalaxiaBackground
     ) {
-        Column(modifier = Modifier.fillMaxSize().imePadding()) {
-            SearchBar(
-                query = query,
-                onQueryChange = searchViewModel::onQueryChange,
-                onSearch = {
-                    searchViewModel.submit()
-                    focusManager.clearFocus()
-                },
-                onClear = {
-                    searchViewModel.clear()
-                    focusRequester.requestFocus()
-                },
-                onBack = onBack,
-                focusRequester = focusRequester
-            )
+        Box(modifier = Modifier.fillMaxSize().imePadding()) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                SearchBar(
+                    query = query,
+                    onQueryChange = searchViewModel::onQueryChange,
+                    onSearch = {
+                        searchViewModel.submit()
+                        focusManager.clearFocus()
+                    },
+                    onClear = {
+                        searchViewModel.clear()
+                        focusRequester.requestFocus()
+                    },
+                    onBack = onBack,
+                    focusRequester = focusRequester
+                )
 
-            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                when (val current = state) {
-                    is SearchState.Idle -> IdleContent(
-                        onSuggestionClick = { suggestion ->
-                            searchViewModel.submit(suggestion)
-                            focusManager.clearFocus()
-                        }
-                    )
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    val current = state
+                    if (current is SearchState.Idle) {
+                        IdleContent(
+                            onSuggestionClick = { suggestion ->
+                                searchViewModel.submit(suggestion)
+                                focusManager.clearFocus()
+                            }
+                        )
+                    } else {
+                        val pullToRefreshState = rememberPullToRefreshState()
+                        PullToRefreshBox(
+                            isRefreshing = isRefreshing,
+                            onRefresh = searchViewModel::refresh,
+                            state = pullToRefreshState,
+                            modifier = Modifier.fillMaxSize(),
+                            indicator = {
+                                PullToRefreshDefaults.Indicator(
+                                    state = pullToRefreshState,
+                                    isRefreshing = isRefreshing,
+                                    containerColor = GalaxiaCardBackground,
+                                    color = GalaxiaCyan,
+                                    modifier = Modifier.align(Alignment.TopCenter)
+                                )
+                            }
+                        ) {
+                            when (current) {
+                                is SearchState.Loading -> SearchResultSkeletonList(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(metrics.horizontalPadding)
+                                )
 
-                    is SearchState.Loading -> SearchResultSkeletonList(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp)
-                    )
+                                is SearchState.Empty -> Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState()),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    MessageContent(
+                                        icon = Icons.Default.SearchOff,
+                                        title = "Nenhum resultado para “${current.query}”",
+                                        message = "Tente outro termo, como o nome de um planeta, missão, fenômeno solar ou evento natural."
+                                    )
+                                }
 
-                    is SearchState.Empty -> MessageContent(
-                        icon = Icons.Default.SearchOff,
-                        title = "Nenhum resultado para “${current.query}”",
-                        message = "Tente outro termo, como o nome de um planeta, missão, fenômeno solar ou evento natural.",
-                        modifier = Modifier.align(Alignment.Center)
-                    )
+                                is SearchState.Error -> Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState()),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    MessageContent(
+                                        icon = Icons.Default.SearchOff,
+                                        title = current.message,
+                                        messageColor = Color(0xFFFF6B6B),
+                                        action = {
+                                            Button(
+                                                onClick = searchViewModel::retry,
+                                                colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+                                            ) {
+                                                Icon(Icons.Default.Refresh, contentDescription = null, tint = GalaxiaBackground)
+                                                Spacer(Modifier.size(8.dp))
+                                                Text("Tentar novamente", color = GalaxiaBackground)
+                                            }
+                                        }
+                                    )
+                                }
 
-                    is SearchState.Error -> MessageContent(
-                        icon = Icons.Default.SearchOff,
-                        title = current.message,
-                        messageColor = Color.Red,
-                        modifier = Modifier.align(Alignment.Center),
-                        action = {
-                            Button(
-                                onClick = searchViewModel::retry,
-                                colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = null)
-                                Spacer(Modifier.size(8.dp))
-                                Text("Tentar novamente", color = GalaxiaBackground)
+                                is SearchState.Results -> ResultsContent(
+                                    state = current,
+                                    favoriteIds = favoriteIds,
+                                    onToggleFavorite = onToggleFavorite,
+                                    onOpenDetail = { item ->
+                                        focusManager.clearFocus()
+                                        onOpenDetail(item)
+                                    },
+                                    onLoadMore = searchViewModel::loadMore,
+                                    onRetryLoadMore = searchViewModel::retry
+                                )
+
+                                is SearchState.Idle -> Unit
                             }
                         }
-                    )
-
-                    is SearchState.Results -> ResultsContent(
-                        state = current,
-                        favoriteIds = favoriteIds,
-                        onToggleFavorite = onToggleFavorite,
-                        onOpenDetail = { item ->
-                            focusManager.clearFocus()
-                            onOpenDetail(item)
-                        },
-                        onLoadMore = searchViewModel::loadMore,
-                        onRetryLoadMore = searchViewModel::retry
-                    )
+                    }
                 }
+            }
+
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp)
+            ) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    containerColor = GalaxiaCardBackground,
+                    contentColor = GalaxiaWhite,
+                    shape = RoundedCornerShape(12.dp)
+                )
             }
         }
     }
@@ -360,8 +451,14 @@ private fun ResultsContent(
     onRetryLoadMore: () -> Unit
 ) {
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val metrics = LocalUiMetrics.current
 
     LaunchedEffect(state.query) { listState.scrollToItem(0) }
+
+    val showScrollToTop by remember {
+        derivedStateOf { listState.firstVisibleItemIndex >= 3 }
+    }
 
     val nearEnd by remember {
         derivedStateOf {
@@ -374,51 +471,72 @@ private fun ResultsContent(
         if (nearEnd && state.hasMore) onLoadMore()
     }
 
-    LazyColumn(
-        state = listState,
+    Box(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentAlignment = Alignment.TopCenter
     ) {
-        item(key = "header") {
-            val total = NumberFormat.getIntegerInstance(Locale.forLanguageTag("pt-BR")).format(state.totalResults)
-            Text(
-                text = if (state.totalResults == 1) "1 resultado" else "$total resultados",
-                color = GalaxiaGray,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
-            )
-        }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .responsiveContentWidth(metrics.maxContentWidth),
+            contentPadding = PaddingValues(
+                start = metrics.horizontalPadding,
+                end = metrics.horizontalPadding,
+                bottom = 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(metrics.cardSpacing)
+        ) {
+            item(key = "header") {
+                val total = NumberFormat.getIntegerInstance(Locale.forLanguageTag("pt-BR")).format(state.totalResults)
+                Text(
+                    text = if (state.totalResults == 1) "1 resultado" else "$total resultados",
+                    color = GalaxiaGray,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
+                )
+            }
 
-        items(items = state.items, key = { it.id }) { item ->
-            SearchResultCard(
-                item = item,
-                isFavorite = item.id in favoriteIds,
-                onToggleFavorite = { onToggleFavorite(item) },
-                onClick = { onOpenDetail(item) }
-            )
-        }
+            items(items = state.items, key = { it.id }) { item ->
+                SearchResultCard(
+                    item = item,
+                    isFavorite = item.id in favoriteIds,
+                    onToggleFavorite = { onToggleFavorite(item) },
+                    onClick = { onOpenDetail(item) }
+                )
+            }
 
-        item(key = "footer") {
-            Box(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                when {
-                    state.isLoadingMore -> SearchResultCardSkeleton(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
-                    )
-                    state.loadMoreFailed -> TextButton(onClick = onRetryLoadMore) {
-                        Text("Falha ao carregar mais. Tocar para tentar de novo", color = GalaxiaCyan)
+            item(key = "footer") {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    when {
+                        state.isLoadingMore -> SearchResultCardSkeleton(
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                        )
+                        state.loadMoreFailed -> TextButton(onClick = onRetryLoadMore) {
+                            Text("Falha ao carregar mais. Tocar para tentar de novo", color = GalaxiaCyan)
+                        }
+                        !state.hasMore && state.items.isNotEmpty() -> Text(
+                            text = "Fim dos resultados",
+                            color = GalaxiaGray,
+                            fontSize = 12.sp
+                        )
                     }
-                    !state.hasMore && state.items.isNotEmpty() -> Text(
-                        text = "Fim dos resultados",
-                        color = GalaxiaGray,
-                        fontSize = 12.sp
-                    )
                 }
             }
         }
+
+        ScrollToTopButton(
+            visible = showScrollToTop,
+            onClick = {
+                coroutineScope.launch { listState.animateScrollToItem(0) }
+            },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = 16.dp)
+        )
     }
 }
 
@@ -430,20 +548,21 @@ private fun SearchResultCard(
     onClick: () -> Unit
 ) {
     val uriHandler = LocalUriHandler.current
+    val metrics = LocalUiMetrics.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
             .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val thumbModifier = Modifier
-            .size(88.dp)
+            .size(metrics.searchThumbSize)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF161822))
+            .background(GalaxiaSurfaceElevated)
 
         val previewUrl = item.previewImageUrl
         when {
@@ -459,7 +578,7 @@ private fun SearchResultCard(
                         )
                     } else {
                         Box(
-                            modifier = Modifier.fillMaxSize().background(Color(0xFF161822)),
+                            modifier = Modifier.fillMaxSize().background(GalaxiaSurfaceElevated),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.Videocam, contentDescription = null, tint = GalaxiaCyan)
@@ -572,7 +691,7 @@ private fun SearchResultCard(
                     color = GalaxiaGray,
                     fontSize = 12.sp,
                     lineHeight = 17.sp,
-                    maxLines = 2,
+                    maxLines = metrics.cardDescriptionMaxLines.coerceAtMost(4),
                     overflow = TextOverflow.Ellipsis
                 )
             }

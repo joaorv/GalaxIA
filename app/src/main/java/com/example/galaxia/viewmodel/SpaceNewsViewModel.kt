@@ -14,8 +14,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -51,6 +54,12 @@ class SpaceNewsViewModel(
 
     private val _categoryStates = MutableStateFlow<Map<NewsCategory, SpaceNewsUiState>>(emptyMap())
     val categoryStates: StateFlow<Map<NewsCategory, SpaceNewsUiState>> = _categoryStates.asStateFlow()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private val _userMessage = MutableSharedFlow<String>()
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
 
     private val loadedKeysByCategory = mutableMapOf<NewsCategory, String>()
     private val loadedPagesByCategory = mutableMapOf<NewsCategory, Int>()
@@ -141,14 +150,104 @@ class SpaceNewsViewModel(
     }
 
     fun refresh() {
+        if (_isRefreshing.value || _uiState.value is SpaceNewsUiState.Loading) return
         hasInitialized = true
         val category = _selectedCategory.value
-        loadCategory(
-            category = category,
-            subTopic = _selectedSubTopics.value[category],
-            sortOrder = _selectedSortOrder.value,
-            forceRefresh = true
-        )
+        val subTopic = _selectedSubTopics.value[category]
+        val sortOrder = _selectedSortOrder.value
+        val existingSuccess = _categoryStates.value[category] is SpaceNewsUiState.Success
+
+        if (!existingSuccess) {
+            loadCategory(
+                category = category,
+                subTopic = subTopic,
+                sortOrder = sortOrder,
+                forceRefresh = true
+            )
+            return
+        }
+
+        loadJob?.cancel()
+        pagingJob?.cancel()
+        translationJob?.cancel()
+        val cacheKey = repository.buildCacheKey(category, subTopic, sortOrder)
+
+        loadJob = viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                val result = repository.fetchCategoryPage(
+                    category = category,
+                    subTopic = subTopic,
+                    sortOrder = sortOrder,
+                    page = 1,
+                    forceRefresh = true,
+                    allowStaleFallback = false
+                )
+                if (_selectedCategory.value != category ||
+                    _selectedSubTopics.value[category]?.id != subTopic?.id ||
+                    _selectedSortOrder.value != sortOrder
+                ) {
+                    return@launch
+                }
+
+                if (result.items.isEmpty()) {
+                    loadedKeysByCategory[category] = cacheKey
+                    loadedPagesByCategory[category] = 1
+                    setCategoryState(category, SpaceNewsUiState.Empty(category))
+                    return@launch
+                }
+
+                currentPage = result.page
+                loadedKeysByCategory[category] = cacheKey
+                loadedPagesByCategory[category] = currentPage
+                val prepared = prepareInitialTranslation(result.items)
+
+                setCategoryState(
+                    category,
+                    SpaceNewsUiState.Success(
+                        items = prepared,
+                        hasMore = result.hasMore,
+                        isLoadingMore = false,
+                        isFromOfflineCache = result.isFromOfflineCache
+                    )
+                )
+                _isRefreshing.value = false
+
+                val pending = prepared.filter {
+                    !it.isTranslated || (it.fullDescription.isNotBlank() && it.translatedFullDescription.isNullOrBlank())
+                }
+                if (pending.isNotEmpty()) {
+                    launchBackgroundTranslation(
+                        category = category,
+                        subTopicId = subTopic?.id,
+                        sortOrder = sortOrder,
+                        cacheKey = cacheKey,
+                        pending = pending,
+                        pageLoaded = currentPage,
+                        hasMore = result.hasMore
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Falha ao atualizar $category via Pull to Refresh", e)
+                _userMessage.emit(mapRefreshErrorMessage(e))
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
+    }
+
+    private fun mapRefreshErrorMessage(e: Exception): String = when (e) {
+        is HttpException -> when (e.code()) {
+            403 -> "Chave de API inválida ou sem permissão."
+            429 -> "Limite de requisições da NASA atingido. Tente em instantes."
+            else -> "Erro ao atualizar notícias (HTTP ${e.code()})."
+        }
+        is SocketTimeoutException -> "O servidor da NASA demorou muito para responder."
+        is UnknownHostException -> "Sem conexão com a internet. Mantendo conteúdo atual."
+        is IOException -> "Falha de rede ao atualizar. Tente novamente."
+        else -> "Não foi possível atualizar agora."
     }
 
     fun loadNextPage() {

@@ -103,7 +103,8 @@ class SpaceNewsRepository(
         subTopic: NewsSubTopic? = null,
         sortOrder: NewsSortOrder = NewsSortOrder.NEWEST,
         page: Int = 1,
-        forceRefresh: Boolean = false
+        forceRefresh: Boolean = false,
+        allowStaleFallback: Boolean = true
     ): NewsPageResult {
         val cacheKey = buildCacheKey(category, subTopic, sortOrder)
         if (page == 1 && !forceRefresh) {
@@ -150,7 +151,7 @@ class SpaceNewsRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            if (page == 1) {
+            if (page == 1 && allowStaleFallback) {
                 cache.getStale(cacheKey)?.let { stale ->
                     restorePagingStateIfApplicable(category, cacheKey, stale)
                     return NewsPageResult(

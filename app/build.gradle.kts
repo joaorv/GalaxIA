@@ -55,6 +55,7 @@ dependencies {
     implementation(libs.mlkit.translate)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
+    implementation(libs.androidx.datastore.preferences)
     testImplementation(libs.junit)
     implementation(libs.androidx.compose.material.icons.extended)
     androidTestImplementation(platform(libs.androidx.compose.bom))

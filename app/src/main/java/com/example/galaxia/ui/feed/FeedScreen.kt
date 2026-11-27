@@ -5,12 +5,18 @@ import com.example.galaxia.ui.history.HistoryScreen
 import com.example.galaxia.ui.favorites.FavoritesScreen
 import com.example.galaxia.ui.news.SpaceNewsScreen
 import com.example.galaxia.ui.search.SearchScreen
+import com.example.galaxia.ui.settings.SettingsScreen
 import com.example.galaxia.data.model.toFavoriteEntity
+import com.example.galaxia.viewmodel.SettingsViewModel
 import com.example.galaxia.viewmodel.SpaceNewsViewModel
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -35,27 +41,38 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Copyright
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
-import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Newspaper
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
+import com.example.galaxia.ui.components.CollapsibleHeaderContainer
 import com.example.galaxia.ui.components.FeedSkeletonList
+import com.example.galaxia.ui.components.ScrollToTopButton
 import com.example.galaxia.ui.components.VideoMediaCard
+import com.example.galaxia.ui.components.rememberCollapsibleHeaderState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -68,9 +85,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -82,6 +101,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.vectorResource
@@ -103,24 +123,41 @@ import com.example.galaxia.data.local.toApodResponse
 import com.example.galaxia.data.local.toFavoriteEntity
 import com.example.galaxia.data.model.ApodResponse
 import com.example.galaxia.ui.theme.GalaxiaBackground
+import com.example.galaxia.ui.theme.GalaxiaBottomBarBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
+import com.example.galaxia.ui.theme.GalaxiaSurfaceElevated
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.theme.LocalGalaxiaColors
+import com.example.galaxia.ui.theme.LocalUiMetrics
+import com.example.galaxia.ui.theme.responsiveContentWidth
 import com.example.galaxia.ui.util.formatDateBr
 import com.example.galaxia.viewmodel.FeedViewModel
 import kotlin.time.Duration.Companion.milliseconds
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel = viewModel(),
     spaceNewsViewModel: SpaceNewsViewModel = viewModel(),
+    settingsViewModel: SettingsViewModel = viewModel(),
 ) {
     val apodState by viewModel.apodState.collectAsState()
+    val isRefreshing by viewModel.isRefreshing.collectAsState()
     val favoriteIds by viewModel.favoriteIds.collectAsState()
     val feedFilter by viewModel.feedFilter.collectAsState()
+    val userPreferences by settingsViewModel.preferences.collectAsState()
+    val metrics = LocalUiMetrics.current
+
     val tabPagerState = rememberPagerState(initialPage = 0, pageCount = { 4 })
     val coroutineScope = rememberCoroutineScope()
+    val headerState = rememberCollapsibleHeaderState()
+    val apodListState = rememberLazyListState()
+    val showApodScrollToTop by remember {
+        derivedStateOf { apodListState.firstVisibleItemIndex >= 2 }
+    }
+
     val apiKeyManager = remember { NasaApiKeyManager.getInstance(GalaxiaApplication.instance) }
     val shouldShowApiKeyPrompt by apiKeyManager.shouldShowOnboardingPrompt.collectAsState()
     val isUsingCustomKey by apiKeyManager.isUsingCustomKey.collectAsState()
@@ -128,15 +165,24 @@ fun FeedScreen(
     var showApiKeyDialog by remember { mutableStateOf(false) }
     var detailTarget by remember { mutableStateOf<DetailTarget?>(null) }
     var showSearch by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Seta "voltar" do sistema fecha o detalhe, depois a pesquisa, antes de sair do app
-    BackHandler(enabled = detailTarget != null || showSearch) {
-        if (detailTarget != null) detailTarget = null else showSearch = false
+    // Seta "voltar" do sistema fecha detalhe, configurações ou pesquisa antes de sair do app
+    BackHandler(enabled = detailTarget != null || showSettings || showSearch) {
+        when {
+            detailTarget != null -> detailTarget = null
+            showSettings -> showSettings = false
+            else -> showSearch = false
+        }
     }
 
-    LaunchedEffect(viewModel) {
-        viewModel.userMessage.collectLatest { message ->
+    LaunchedEffect(tabPagerState.currentPage) {
+        headerState.expand()
+    }
+
+    LaunchedEffect(viewModel, spaceNewsViewModel) {
+        merge(viewModel.userMessage, spaceNewsViewModel.userMessage).collectLatest { message ->
             snackbarHostState.currentSnackbarData?.dismiss()
             coroutineScope {
                 val showJob = launch {
@@ -145,7 +191,7 @@ fun FeedScreen(
                         duration = SnackbarDuration.Indefinite
                     )
                 }
-                delay(1200.milliseconds) // Exibe por 1.2s e desaparece rapidamente
+                delay(1800.milliseconds)
                 showJob.cancel()
                 snackbarHostState.currentSnackbarData?.dismiss()
             }
@@ -153,8 +199,12 @@ fun FeedScreen(
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         snackbarHost = {
-            SnackbarHost(snackbarHostState) { data ->
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.navigationBarsPadding()
+            ) { data ->
                 Snackbar(
                     snackbarData = data,
                     containerColor = GalaxiaCardBackground,
@@ -174,48 +224,49 @@ fun FeedScreen(
                 .background(GalaxiaBackground)
         ) {
 
-        // Cabeçalho
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = 24.dp,
-                    top = 20.dp,
-                    end = 16.dp,
-                    bottom = 12.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        // Cabeçalho dinâmico (estilo Twitter/X — exceto na aba Histórico)
+        CollapsibleHeaderContainer(state = headerState) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = metrics.horizontalPadding,
+                        top = 8.dp,
+                        end = (metrics.horizontalPadding - 8.dp).coerceAtLeast(4.dp),
+                        bottom = 6.dp
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "GalaxIA",
+                    color = GalaxiaCyan,
+                    fontSize = if (metrics.isCompactScreen) 24.sp else 26.sp,
+                    fontWeight = FontWeight.Bold
+                )
 
-            Text(
-                text = "GalaxIA",
-                color = GalaxiaCyan,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { showSearch = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Pesquisar",
+                            tint = GalaxiaWhite,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = { showApiKeyDialog = true }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Key,
-                        contentDescription = "Configurar chave de API da NASA",
-                        tint = if (isUsingCustomKey) GalaxiaCyan else GalaxiaGray,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = { showSearch = true }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Pesquisar",
-                        tint = GalaxiaWhite,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    IconButton(
+                        onClick = { showSettings = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Configurações",
+                            tint = GalaxiaWhite,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
         }
@@ -229,73 +280,136 @@ fun FeedScreen(
             HorizontalPager(
                 state = tabPagerState,
                 beyondViewportPageCount = 0,
-                userScrollEnabled = detailTarget == null && !showSearch,
+                userScrollEnabled = detailTarget == null && !showSearch && !showSettings,
                 modifier = Modifier.fillMaxSize()
             ) { page ->
                 when (page) {
-                    0 -> Column(modifier = Modifier.fillMaxSize()) {
-                    FeedFilterRow(
-                        selectedFilter = feedFilter,
-                        isLoading = apodState is FeedViewModel.ApodState.Loading,
-                        onFilterSelected = { viewModel.setFeedFilter(it) }
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    ) {
-                        when (val state = apodState) {
-                            is FeedViewModel.ApodState.Loading -> {
-                                FeedSkeletonList(
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
-                            is FeedViewModel.ApodState.Error -> {
-                                Column(
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .padding(horizontal = 24.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = state.message,
-                                        color = Color.Red,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.padding(bottom = 16.dp)
-                                    )
-                                    Button(
-                                        onClick = { viewModel.fetchApod() },
-                                        colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
-                                    ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = null)
-                                        Spacer(Modifier.size(8.dp))
-                                        Text("Tentar Novamente", color = GalaxiaBackground)
-                                    }
+                    0 -> {
+                        val apodNestedScroll = remember(headerState, apodListState, apodState) {
+                            headerState.createNestedScrollConnection(
+                                scope = coroutineScope,
+                                canCollapse = {
+                                    apodState is FeedViewModel.ApodState.Success &&
+                                        (apodListState.canScrollForward || apodListState.canScrollBackward)
+                                },
+                                isAtTop = {
+                                    apodListState.firstVisibleItemIndex == 0 &&
+                                        apodListState.firstVisibleItemScrollOffset == 0
                                 }
-                            }
-                            is FeedViewModel.ApodState.Success -> {
-                                LazyColumn(
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 20.dp),
-                                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    items(
-                                        items = state.apods,
-                                        key = { it.date }
-                                    ) { item ->
-                                        FeedCard(
-                                            apod = item,
-                                            isFavorite = "apod_${item.date}" in favoriteIds,
-                                            onToggleFavorite = { viewModel.toggleFavoriteApod(item) },
-                                            onClick = { detailTarget = DetailTarget(item.toFavoriteEntity(), item) }
+                            )
+                        }
+                        val pullToRefreshState = rememberPullToRefreshState()
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .nestedScroll(apodNestedScroll)
+                        ) {
+                            FeedFilterRow(
+                                selectedFilter = feedFilter,
+                                onFilterSelected = { viewModel.setFeedFilter(it) }
+                            )
+
+                            PullToRefreshBox(
+                                isRefreshing = isRefreshing,
+                                onRefresh = { viewModel.refreshApod() },
+                                state = pullToRefreshState,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                indicator = {
+                                    PullToRefreshDefaults.Indicator(
+                                        state = pullToRefreshState,
+                                        isRefreshing = isRefreshing,
+                                        containerColor = GalaxiaCardBackground,
+                                        color = GalaxiaCyan,
+                                        modifier = Modifier.align(Alignment.TopCenter)
+                                    )
+                                }
+                            ) {
+                                when (val state = apodState) {
+                                    is FeedViewModel.ApodState.Loading -> {
+                                        FeedSkeletonList(
+                                            modifier = Modifier.fillMaxSize()
                                         )
+                                    }
+                                    is FeedViewModel.ApodState.Error -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .verticalScroll(rememberScrollState()),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(horizontal = 24.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                Text(
+                                                    text = state.message,
+                                                    color = Color(0xFFFF6B6B),
+                                                    textAlign = TextAlign.Center,
+                                                    modifier = Modifier.padding(bottom = 16.dp)
+                                                )
+                                                Button(
+                                                    onClick = { viewModel.fetchApod() },
+                                                    colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+                                                ) {
+                                                    Icon(Icons.Default.Refresh, contentDescription = null, tint = GalaxiaBackground)
+                                                    Spacer(Modifier.size(8.dp))
+                                                    Text("Tentar Novamente", color = GalaxiaBackground)
+                                                }
+                                            }
+                                        }
+                                    }
+                                    is FeedViewModel.ApodState.Success -> {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.TopCenter
+                                        ) {
+                                            LazyColumn(
+                                                state = apodListState,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .responsiveContentWidth(metrics.maxContentWidth),
+                                                contentPadding = PaddingValues(
+                                                    start = metrics.horizontalPadding,
+                                                    end = metrics.horizontalPadding,
+                                                    top = 4.dp,
+                                                    bottom = 16.dp
+                                                ),
+                                                verticalArrangement = Arrangement.spacedBy(metrics.cardSpacing)
+                                            ) {
+                                                items(
+                                                    items = state.apods,
+                                                    key = { it.date }
+                                                ) { item ->
+                                                    FeedCard(
+                                                        apod = item,
+                                                        isFavorite = "apod_${item.date}" in favoriteIds,
+                                                        onToggleFavorite = { viewModel.toggleFavoriteApod(item) },
+                                                        onClick = { detailTarget = DetailTarget(item.toFavoriteEntity(), item) }
+                                                    )
+                                                }
+                                            }
+
+                                            ScrollToTopButton(
+                                                visible = showApodScrollToTop,
+                                                onClick = {
+                                                    coroutineScope.launch {
+                                                        apodListState.animateScrollToItem(0)
+                                                        headerState.expand()
+                                                    }
+                                                },
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomEnd)
+                                                    .padding(end = 16.dp, bottom = 16.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
                 1 -> {
                     SpaceNewsScreen(
                         favoriteIds = favoriteIds,
@@ -308,6 +422,7 @@ fun FeedScreen(
                                 initialImageIndex = pageIndex
                             )
                         },
+                        headerState = headerState,
                         newsViewModel = spaceNewsViewModel
                     )
                 }
@@ -322,6 +437,7 @@ fun FeedScreen(
                 3 -> {
                     FavoritesScreen(
                         viewModel = viewModel,
+                        headerState = headerState,
                         onOpenDetail = { favorite ->
                             detailTarget = DetailTarget(favorite)
                         }
@@ -364,6 +480,27 @@ fun FeedScreen(
                 modifier = Modifier
                     .padding(innerPadding)
                     .consumeWindowInsets(innerPadding)
+                    .navigationBarsPadding()
+            )
+        }
+
+        // Tela de Configurações
+        AnimatedVisibility(
+            visible = showSettings,
+            enter = slideInHorizontally { it } + fadeIn(),
+            exit = slideOutHorizontally { it } + fadeOut()
+        ) {
+            SettingsScreen(
+                preferences = userPreferences,
+                isUsingCustomApiKey = isUsingCustomKey,
+                onSelectThemeMode = settingsViewModel::updateThemeMode,
+                onSelectFontSize = settingsViewModel::updateFontSize,
+                onSelectCardSize = settingsViewModel::updateCardSize,
+                onOpenApiKeyDialog = { showApiKeyDialog = true },
+                onBack = { showSettings = false },
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .consumeWindowInsets(innerPadding)
             )
         }
 
@@ -393,7 +530,10 @@ fun FeedScreen(
                         }
                     },
                     onBack = { detailTarget = null },
-                    modifier = Modifier.padding(innerPadding)
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .consumeWindowInsets(innerPadding)
+                        .navigationBarsPadding()
                 )
             }
         }
@@ -451,20 +591,31 @@ private data class DetailTarget(
 @Composable
 private fun FeedFilterRow(
     selectedFilter: FeedViewModel.FeedFilter,
-    isLoading: Boolean,
     onFilterSelected: (FeedViewModel.FeedFilter) -> Unit
 ) {
+    val metrics = LocalUiMetrics.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 12.dp, bottom = 8.dp),
+            .padding(
+                start = metrics.horizontalPadding,
+                end = metrics.horizontalPadding,
+                bottom = 6.dp
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         FeedViewModel.FeedFilter.entries.forEach { filter ->
             FilterChip(
                 selected = filter == selectedFilter,
                 onClick = { onFilterSelected(filter) },
-                label = { Text(filter.label) },
+                label = {
+                    Text(
+                        text = filter.label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
                 leadingIcon = {
                     Icon(
                         imageVector = when (filter) {
@@ -488,22 +639,6 @@ private fun FeedFilterRow(
                 modifier = Modifier.padding(end = 8.dp)
             )
         }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // No modo aleatório, permite sortear um novo conjunto de fotos
-        if (selectedFilter == FeedViewModel.FeedFilter.RANDOM) {
-            IconButton(
-                onClick = { onFilterSelected(FeedViewModel.FeedFilter.RANDOM) },
-                enabled = !isLoading
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = "Sortear outras fotos",
-                    tint = if (isLoading) GalaxiaGray else GalaxiaCyan
-                )
-            }
-        }
     }
 }
 
@@ -515,11 +650,12 @@ private fun FeedCard(
     onClick: () -> Unit = {}
 ) {
     val uriHandler = LocalUriHandler.current
+    val metrics = LocalUiMetrics.current
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
             .clickable(onClick = onClick)
     ) {
@@ -534,7 +670,7 @@ private fun FeedCard(
                 permalinkUrl = apod.officialNasaUrl,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(230.dp)
+                    .height(metrics.cardMediaHeight)
             )
         } else if (apod.mediaType == "image" && apod.displayImageUrl.isNotBlank()) {
             OptimizedAsyncImage(
@@ -543,27 +679,28 @@ private fun FeedCard(
                 contentDescription = apod.alt ?: apod.displayTitle,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(230.dp)
-                    .background(Color(0xFF161822)),
+                    .height(metrics.cardMediaHeight)
+                    .background(GalaxiaSurfaceElevated),
                 contentScale = ContentScale.Crop
             )
         } else {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .height((metrics.cardMediaHeight - 30.dp).coerceAtLeast(120.dp))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = apod.displayTitle,
-                    color = GalaxiaWhite,
-                    fontWeight = FontWeight.Medium
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
         }
 
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(metrics.cardContentPadding)) {
             // Data do Item
             Row(
                 verticalAlignment = Alignment.CenterVertically
@@ -583,13 +720,14 @@ private fun FeedCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Título
             Text(
                 text = apod.displayTitle,
                 color = GalaxiaWhite,
-                fontSize = 20.sp,
+                fontSize = 19.sp,
+                lineHeight = 25.sp,
                 fontWeight = FontWeight.Bold
             )
 
@@ -608,24 +746,25 @@ private fun FeedCard(
                         text = copyright.trim().replace("\n", " "),
                         color = GalaxiaGray,
                         fontSize = 12.sp,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Texto da Explicação
             Text(
                 text = apod.displayExplanation,
                 color = GalaxiaGray,
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-                maxLines = 3,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                maxLines = metrics.cardDescriptionMaxLines,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Ações: Botão de Favorito e Link NASA
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -634,7 +773,7 @@ private fun FeedCard(
                         imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = if (isFavorite) "Remover dos favoritos" else "Adicionar aos favoritos",
                         tint = if (isFavorite) GalaxiaCyan else GalaxiaGray,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
@@ -666,43 +805,55 @@ private fun BottomNavigation(
     onTabSelected: (Int) -> Unit
 ) {
 
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF0B0C11))
-            .navigationBarsPadding()
-            .padding(vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
+            .background(GalaxiaBottomBarBackground)
     ) {
+        if (!LocalGalaxiaColors.current.isDark) {
+            HorizontalDivider(color = GalaxiaGray.copy(alpha = 0.18f), thickness = 1.dp)
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(vertical = 6.dp, horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
 
         BottomNavigationItem(
             icon = ImageVector.vectorResource(R.drawable.ic_telescope),
             label = "APOD",
             selected = selectedTab == 0,
-            onClick = { onTabSelected(0) }
+            onClick = { onTabSelected(0) },
+            modifier = Modifier.weight(1f)
         )
 
         BottomNavigationItem(
             icon = Icons.Default.Newspaper,
             label = "Notícias",
             selected = selectedTab == 1,
-            onClick = { onTabSelected(1) }
+            onClick = { onTabSelected(1) },
+            modifier = Modifier.weight(1f)
         )
 
         BottomNavigationItem(
             icon = Icons.Default.CalendarMonth,
             label = "Histórico",
             selected = selectedTab == 2,
-            onClick = { onTabSelected(2) }
+            onClick = { onTabSelected(2) },
+            modifier = Modifier.weight(1f)
         )
 
         BottomNavigationItem(
             icon = Icons.Default.FavoriteBorder,
             label = "Favoritos",
             selected = selectedTab == 3,
-            onClick = { onTabSelected(3) }
+            onClick = { onTabSelected(3) },
+            modifier = Modifier.weight(1f)
         )
+        }
     }
 }
 
@@ -711,15 +862,16 @@ private fun BottomNavigationItem(
     icon: ImageVector,
     label: String,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
 
     val color = if (selected) GalaxiaCyan else GalaxiaWhite
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
@@ -727,16 +879,18 @@ private fun BottomNavigationItem(
             imageVector = icon,
             contentDescription = label,
             tint = color,
-            modifier = Modifier.size(26.dp)
+            modifier = Modifier.size(24.dp)
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(3.dp))
 
         Text(
             text = label,
             color = color,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
         )
     }

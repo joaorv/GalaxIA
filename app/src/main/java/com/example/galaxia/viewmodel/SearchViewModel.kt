@@ -10,8 +10,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
@@ -32,6 +35,12 @@ class SearchViewModel(
 
     private val _state = MutableStateFlow<SearchState>(SearchState.Idle)
     val state: StateFlow<SearchState> = _state.asStateFlow()
+
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    private val _userMessage = MutableSharedFlow<String>()
+    val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
 
     private var searchJob: Job? = null
     private var translationJob: Job? = null
@@ -57,10 +66,68 @@ class SearchViewModel(
     fun retry() {
         val current = _state.value
         if (current is SearchState.Results && current.loadMoreFailed) loadMore()
-        else startSearch(debounceMs = 0, force = true)
+        else startSearch(debounceMs = 0, force = true, forceRefresh = true)
     }
 
-    private fun startSearch(debounceMs: Long, force: Boolean = false) {
+    /**
+     * Atualiza a pesquisa ativa por Pull to Refresh mantendo os resultados atuais
+     * visíveis enquanto consulta novamente as APIs.
+     */
+    fun refresh() {
+        val text = _query.value.trim()
+        if (_isRefreshing.value || text.length < MIN_QUERY_LENGTH || _state.value is SearchState.Loading) return
+
+        val current = _state.value
+        if (current !is SearchState.Results) {
+            startSearch(debounceMs = 0, force = true, forceRefresh = true)
+            return
+        }
+
+        searchJob?.cancel()
+        translationJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _isRefreshing.value = true
+            try {
+                val page = globalSearchRepository.search(
+                    query = text,
+                    page = 1,
+                    forceRefresh = true
+                )
+                if (_query.value.trim() != text) return@launch
+
+                if (page.items.isEmpty() && !page.hasMore) {
+                    _state.value = SearchState.Empty(text)
+                } else {
+                    val prepared = prepareInitialTranslation(page.items)
+                    if (_query.value.trim() != text) return@launch
+
+                    _state.value = SearchState.Results(
+                        query = text,
+                        searchTerm = page.searchTerm,
+                        items = prepared,
+                        totalResults = page.totalResults,
+                        page = page.page,
+                        hasMore = page.hasMore
+                    )
+                    _isRefreshing.value = false
+
+                    val pending = prepared.filter {
+                        !it.isTranslated || (it.description.isNotBlank() && it.translatedDescription.isNullOrBlank())
+                    }
+                    launchBackgroundTranslation(text, pending)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Erro ao atualizar pesquisa '$text'", e)
+                _userMessage.emit(errorMessage(e))
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
+    }
+
+    private fun startSearch(debounceMs: Long, force: Boolean = false, forceRefresh: Boolean = false) {
         val text = _query.value.trim()
 
         val current = _state.value
@@ -77,7 +144,11 @@ class SearchViewModel(
             delay(debounceMs)
             _state.value = SearchState.Loading(text)
             try {
-                val page = globalSearchRepository.search(query = text, page = 1)
+                val page = globalSearchRepository.search(
+                    query = text,
+                    page = 1,
+                    forceRefresh = forceRefresh
+                )
                 if (_query.value.trim() != text) return@launch
 
                 if (page.items.isEmpty() && !page.hasMore) {

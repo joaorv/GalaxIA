@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -58,11 +59,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.galaxia.ui.components.OptimizedAsyncImage
 import com.example.galaxia.data.model.ApodResponse
+import com.example.galaxia.repository.ApodRepository
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
+import com.example.galaxia.ui.theme.GalaxiaSurfaceElevated
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.theme.LocalUiMetrics
+import com.example.galaxia.ui.theme.responsiveContentWidth
 import com.example.galaxia.ui.util.formatDateBr
 import com.example.galaxia.viewmodel.FeedViewModel
 import java.time.Instant
@@ -83,178 +88,210 @@ fun HistoryScreen(
     val favoriteIds by viewModel.favoriteIds.collectAsState()
     var showDatePicker by remember { mutableStateOf(false) }
 
-    val parsedDate = remember(selectedDateString) {
+    val today = ApodRepository.latestApodDate()
+    val parsedDate = remember(selectedDateString, today) {
         try {
             LocalDate.parse(selectedDateString)
         } catch (e: Exception) {
-            LocalDate.now()
+            today
         }
     }
 
-    val today = LocalDate.now()
     val isToday = parsedDate.isEqual(today) || parsedDate.isAfter(today)
     val minDate = LocalDate.of(1995, 6, 16)
     val isMinDate = parsedDate.isEqual(minDate) || parsedDate.isBefore(minDate)
+    val metrics = LocalUiMetrics.current
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(GalaxiaBackground)
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp)
+            .background(GalaxiaBackground),
+        contentAlignment = Alignment.TopCenter
     ) {
-        // Card do Seletor de Data / Calendário
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(GalaxiaCardBackground)
-                .padding(16.dp)
+                .fillMaxSize()
+                .responsiveContentWidth(metrics.maxContentWidth)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = metrics.horizontalPadding, vertical = 12.dp)
         ) {
-            Text(
-                text = "Histórico de Fotos",
-                color = GalaxiaWhite,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Botão Principal do Calendário
-            Row(
+            // Card do Seletor de Data / Calendário
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF161822))
-                    .clickable { showDatePicker = true }
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .clip(RoundedCornerShape(metrics.cardCornerRadius))
+                    .background(GalaxiaCardBackground)
+                    .padding(14.dp)
             ) {
+                Text(
+                    text = "Histórico de Fotos",
+                    color = GalaxiaWhite,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Botão Principal do Calendário
                 Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarMonth,
-                        contentDescription = "Calendário",
-                        tint = GalaxiaCyan,
-                        modifier = Modifier.size(26.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = formatDisplayDate(selectedDateString),
-                            color = GalaxiaWhite,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Toque para abrir o calendário",
-                            color = GalaxiaGray,
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Controles Rápidos de Navegação por Dia
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        val prevDate = parsedDate.minusDays(1)
-                        viewModel.selectHistoryDate(prevDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
-                    },
-                    enabled = !isMinDate,
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ChevronLeft,
-                        contentDescription = "Dia anterior",
-                        tint = if (!isMinDate) GalaxiaCyan else GalaxiaGray,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Anterior", color = if (!isMinDate) GalaxiaCyan else GalaxiaGray, fontSize = 13.sp)
-                }
-
-                TextButton(
-                    onClick = { showDatePicker = true }
-                ) {
-                    Text("Selecionar", color = GalaxiaCyan, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                }
-
-                OutlinedButton(
-                    onClick = {
-                        if (!isToday) {
-                            val nextDate = parsedDate.plusDays(1)
-                            viewModel.selectHistoryDate(nextDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
-                        }
-                    },
-                    enabled = !isToday,
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("Próximo", color = if (!isToday) GalaxiaCyan else GalaxiaGray, fontSize = 13.sp)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Próximo dia",
-                        tint = if (!isToday) GalaxiaCyan else GalaxiaGray,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Exibição dos Dados da Foto Selecionada
-        when (val state = historyState) {
-            is FeedViewModel.HistoryState.Loading -> {
-                HistoryCardSkeleton()
-            }
-
-            is FeedViewModel.HistoryState.Error -> {
-                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(GalaxiaCardBackground)
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(GalaxiaSurfaceElevated)
+                        .clickable { showDatePicker = true }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = state.message,
-                        color = Color(0xFFFF6B6B),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Button(
-                        onClick = { viewModel.fetchHistoryByDate(selectedDateString) },
-                        colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Refresh, contentDescription = null, tint = GalaxiaBackground)
-                        Spacer(Modifier.size(8.dp))
-                        Text("Tentar Novamente", color = GalaxiaBackground, fontWeight = FontWeight.Bold)
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = "Calendário",
+                            tint = GalaxiaCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = formatDisplayDate(selectedDateString),
+                                color = GalaxiaWhite,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Toque para abrir o calendário",
+                                color = GalaxiaGray,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Controles Rápidos de Navegação por Dia (compactos para telas pequenas/fontes grandes)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val prevDate = parsedDate.minusDays(1)
+                            viewModel.selectHistoryDate(prevDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+                        },
+                        enabled = !isMinDate,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ChevronLeft,
+                            contentDescription = "Dia anterior",
+                            tint = if (!isMinDate) GalaxiaCyan else GalaxiaGray,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = "Anterior",
+                            color = if (!isMinDate) GalaxiaCyan else GalaxiaGray,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+
+                    TextButton(
+                        onClick = { showDatePicker = true },
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Selecionar",
+                            color = GalaxiaCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (!isToday) {
+                                val nextDate = parsedDate.plusDays(1)
+                                viewModel.selectHistoryDate(nextDate.format(DateTimeFormatter.ISO_LOCAL_DATE))
+                            }
+                        },
+                        enabled = !isToday,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "Próximo",
+                            color = if (!isToday) GalaxiaCyan else GalaxiaGray,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Icon(
+                            imageVector = Icons.Default.ChevronRight,
+                            contentDescription = "Próximo dia",
+                            tint = if (!isToday) GalaxiaCyan else GalaxiaGray,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
 
-            is FeedViewModel.HistoryState.Success -> {
-                HistoryCard(
-                    apod = state.apod,
-                    isFavorite = "apod_${state.apod.date}" in favoriteIds,
-                    onToggleFavorite = { viewModel.toggleFavoriteApod(state.apod) },
-                    onClick = { onOpenDetail(state.apod) }
-                )
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Exibição dos Dados da Foto Selecionada
+            when (val state = historyState) {
+                is FeedViewModel.HistoryState.Loading -> {
+                    HistoryCardSkeleton()
+                }
+
+                is FeedViewModel.HistoryState.Error -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(metrics.cardCornerRadius))
+                            .background(GalaxiaCardBackground)
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = state.message,
+                            color = Color(0xFFFF6B6B),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = { viewModel.fetchHistoryByDate(selectedDateString) },
+                            colors = ButtonDefaults.buttonColors(containerColor = GalaxiaCyan)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, tint = GalaxiaBackground)
+                            Spacer(Modifier.size(8.dp))
+                            Text("Tentar Novamente", color = GalaxiaBackground, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                is FeedViewModel.HistoryState.Success -> {
+                    HistoryCard(
+                        apod = state.apod,
+                        isFavorite = "apod_${state.apod.date}" in favoriteIds,
+                        onToggleFavorite = { viewModel.toggleFavoriteApod(state.apod) },
+                        onClick = { onOpenDetail(state.apod) }
+                    )
+                }
             }
         }
     }
@@ -328,11 +365,12 @@ private fun HistoryCard(
     onClick: () -> Unit = {}
 ) {
     val uriHandler = LocalUriHandler.current
+    val metrics = LocalUiMetrics.current
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
             .clickable(onClick = onClick)
     ) {
@@ -345,7 +383,7 @@ private fun HistoryCard(
                 permalinkUrl = apod.officialNasaUrl,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
+                    .height(metrics.historyMediaHeight)
             )
         } else if (apod.mediaType == "image") {
             OptimizedAsyncImage(
@@ -354,28 +392,29 @@ private fun HistoryCard(
                 contentDescription = apod.alt ?: apod.displayTitle,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(260.dp)
-                    .background(Color(0xFF161822)),
+                    .height(metrics.historyMediaHeight)
+                    .background(GalaxiaSurfaceElevated),
                 contentScale = ContentScale.Crop
             )
         } else {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    .height((metrics.historyMediaHeight - 40.dp).coerceAtLeast(140.dp))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "Vídeo do dia (${apod.displayTitle})",
-                    color = GalaxiaWhite,
-                    fontWeight = FontWeight.Medium
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
         }
 
         Column(
-            modifier = Modifier.padding(20.dp)
+            modifier = Modifier.padding(metrics.cardContentPadding)
         ) {
             Text(
                 text = apod.displayTitle,
@@ -433,7 +472,7 @@ private fun HistoryCard(
                 color = GalaxiaGray,
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
-                maxLines = 5,
+                maxLines = metrics.cardDescriptionMaxLines + 2,
                 overflow = TextOverflow.Ellipsis
             )
 
@@ -482,7 +521,7 @@ private object ApodSelectableDates : SelectableDates {
         .toEpochMilli()
 
     override fun isSelectableDate(utcTimeMillis: Long): Boolean {
-        val maxMillis = LocalDate.now()
+        val maxMillis = ApodRepository.latestApodDate()
             .atStartOfDay(ZoneOffset.UTC)
             .toInstant()
             .toEpochMilli()
@@ -490,7 +529,7 @@ private object ApodSelectableDates : SelectableDates {
     }
 
     override fun isSelectableYear(year: Int): Boolean {
-        return year in 1995..LocalDate.now().year
+        return year in 1995..ApodRepository.latestApodDate().year
     }
 }
 

@@ -27,17 +27,19 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Copyright
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import com.example.galaxia.ui.components.CollapsibleHeaderState
 import com.example.galaxia.ui.components.FavoriteSkeletonList
+import com.example.galaxia.ui.components.ScrollToTopButton
 import com.example.galaxia.ui.components.VideoMediaCard
 import com.example.galaxia.data.local.displayThumbnailUrl
 import com.example.galaxia.data.local.officialNasaUrl
@@ -47,11 +49,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
@@ -68,13 +74,18 @@ import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
+import com.example.galaxia.ui.theme.GalaxiaSurfaceElevated
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.theme.LocalUiMetrics
+import com.example.galaxia.ui.theme.responsiveContentWidth
 import com.example.galaxia.ui.util.formatDateBr
 import com.example.galaxia.viewmodel.FeedViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun FavoritesScreen(
     viewModel: FeedViewModel,
+    headerState: CollapsibleHeaderState,
     onOpenDetail: (FavoriteEntity) -> Unit = {}
 ) {
     val favorites by viewModel.filteredFavorites.collectAsState()
@@ -82,6 +93,25 @@ fun FavoritesScreen(
     val selectedSortOrder by viewModel.favoriteSortOrder.collectAsState()
     val isLoading by viewModel.isFavoritesLoading.collectAsState()
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val metrics = LocalUiMetrics.current
+
+    val showScrollToTop by remember {
+        derivedStateOf { listState.firstVisibleItemIndex >= 2 }
+    }
+
+    val favoritesNestedScroll = remember(headerState, listState, favorites, isLoading) {
+        headerState.createNestedScrollConnection(
+            scope = coroutineScope,
+            canCollapse = {
+                !isLoading && favorites.isNotEmpty() &&
+                    (listState.canScrollForward || listState.canScrollBackward)
+            },
+            isAtTop = {
+                listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+            }
+        )
+    }
 
     LaunchedEffect(selectedFilter, selectedSortOrder) {
         listState.scrollToItem(0)
@@ -91,12 +121,13 @@ fun FavoritesScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(GalaxiaBackground)
+            .nestedScroll(favoritesNestedScroll)
     ) {
-        // Cabeçalho da Tela de Favoritos
+        // Cabeçalho compacto da Tela de Favoritos
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .padding(horizontal = metrics.horizontalPadding, vertical = 6.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -106,20 +137,20 @@ fun FavoritesScreen(
                 Text(
                     text = "Meus Favoritos",
                     color = GalaxiaWhite,
-                    fontSize = 22.sp,
+                    fontSize = if (metrics.isCompactScreen) 18.sp else 20.sp,
                     fontWeight = FontWeight.Bold
                 )
 
                 Text(
                     text = "${favorites.size} ${if (favorites.size == 1) "item" else "itens"}",
                     color = GalaxiaGray,
-                    fontSize = 14.sp
+                    fontSize = 13.sp
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Chips de Filtro por Categoria (Estratégia A)
+            // Chips de Filtro por Categoria
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -158,33 +189,22 @@ fun FavoritesScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Seção de Ordenação (Mais recentes, Mais antigos, Ordem alfabética)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Sort,
-                    contentDescription = "Ordenar por",
-                    tint = GalaxiaGray,
-                    modifier = Modifier.size(15.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Ordenar por:",
-                    color = GalaxiaGray,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-
             Spacer(modifier = Modifier.height(6.dp))
 
+            // Ordenação inline com ícone para economizar espaço vertical
             LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                item {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Sort,
+                        contentDescription = "Ordenar por",
+                        tint = GalaxiaGray,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
                 items(FavoriteSortOrder.entries.toTypedArray()) { order ->
                     val isSelected = selectedSortOrder == order
                     FilterChip(
@@ -231,7 +251,7 @@ fun FavoritesScreen(
         }
 
         // Conteúdo da Lista ou Estado Vazio com Animação de Carregamento/Transição
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             AnimatedContent(
                 targetState = isLoading,
                 transitionSpec = {
@@ -246,22 +266,47 @@ fun FavoritesScreen(
                 } else if (favorites.isEmpty()) {
                     EmptyFavoritesState(selectedFilter = selectedFilter)
                 } else {
-                    LazyColumn(
-                        state = listState,
+                    Box(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp, top = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        contentAlignment = Alignment.TopCenter
                     ) {
-                        items(
-                            items = favorites,
-                            key = { "${it.id}_${selectedSortOrder.name}_${selectedFilter?.name ?: "all"}" }
-                        ) { item ->
-                            FavoriteCard(
-                                favorite = item,
-                                onRemoveFavorite = { viewModel.removeFavoriteById(item.id) },
-                                onClick = { onOpenDetail(item) }
-                            )
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .responsiveContentWidth(metrics.maxContentWidth),
+                            contentPadding = PaddingValues(
+                                start = metrics.horizontalPadding,
+                                end = metrics.horizontalPadding,
+                                bottom = 16.dp,
+                                top = 4.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(metrics.cardSpacing)
+                        ) {
+                            items(
+                                items = favorites,
+                                key = { "${it.id}_${selectedSortOrder.name}_${selectedFilter?.name ?: "all"}" }
+                            ) { item ->
+                                FavoriteCard(
+                                    favorite = item,
+                                    onRemoveFavorite = { viewModel.removeFavoriteById(item.id) },
+                                    onClick = { onOpenDetail(item) }
+                                )
+                            }
                         }
+
+                        ScrollToTopButton(
+                            visible = showScrollToTop,
+                            onClick = {
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(0)
+                                    headerState.expand()
+                                }
+                            },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 16.dp)
+                        )
                     }
                 }
             }
@@ -276,11 +321,12 @@ private fun FavoriteCard(
     onClick: () -> Unit = {}
 ) {
     val uriHandler = LocalUriHandler.current
+    val metrics = LocalUiMetrics.current
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
             .clickable(onClick = onClick)
     ) {
@@ -294,7 +340,7 @@ private fun FavoriteCard(
                 permalinkUrl = favorite.officialNasaUrl,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(230.dp)
+                    .height(metrics.cardMediaHeight)
             )
         } else if (favorite.mediaType == "image" && !favorite.imageUrl.isNullOrBlank()) {
             OptimizedAsyncImage(
@@ -303,27 +349,28 @@ private fun FavoriteCard(
                 contentDescription = favorite.title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(230.dp)
-                    .background(Color(0xFF161822)),
+                    .height(metrics.cardMediaHeight)
+                    .background(GalaxiaSurfaceElevated),
                 contentScale = ContentScale.Crop
             )
         } else {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .height((metrics.cardMediaHeight - 30.dp).coerceAtLeast(120.dp))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = favorite.title,
-                    color = GalaxiaWhite,
-                    fontWeight = FontWeight.Medium
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(horizontal = 16.dp)
                 )
             }
         }
 
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(metrics.cardContentPadding)) {
             // Tag de Categoria
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -369,13 +416,14 @@ private fun FavoriteCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Título
             Text(
                 text = favorite.title,
                 color = GalaxiaWhite,
-                fontSize = 20.sp,
+                fontSize = 19.sp,
+                lineHeight = 25.sp,
                 fontWeight = FontWeight.Bold
             )
 
@@ -393,24 +441,26 @@ private fun FavoriteCard(
                     Text(
                         text = copyright.trim().replace("\n", " "),
                         color = GalaxiaGray,
-                        fontSize = 12.sp
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Texto da Explicação
             Text(
                 text = favorite.explanationOrBody,
                 color = GalaxiaGray,
-                fontSize = 15.sp,
-                lineHeight = 22.sp,
-                maxLines = 3,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                maxLines = metrics.cardDescriptionMaxLines,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Ações: Botão de Remover dos Favoritos e Link HD
             Row(verticalAlignment = Alignment.CenterVertically) {

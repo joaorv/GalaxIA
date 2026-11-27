@@ -43,9 +43,15 @@ class FeedViewModel(
     private val _feedFilter = MutableStateFlow(FeedFilter.LATEST)
     val feedFilter: StateFlow<FeedFilter> = _feedFilter.asStateFlow()
 
-    private var fetchApodJob: Job? = null
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
-    private val _historySelectedDate = MutableStateFlow(LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE))
+    private var fetchApodJob: Job? = null
+    private var fetchHistoryJob: Job? = null
+
+    private val _historySelectedDate = MutableStateFlow(
+        ApodRepository.latestApodDate().format(DateTimeFormatter.ISO_LOCAL_DATE)
+    )
     val historySelectedDate: StateFlow<String> = _historySelectedDate
 
     private val _historyState = MutableStateFlow<HistoryState>(HistoryState.Loading)
@@ -115,7 +121,7 @@ class FeedViewModel(
 
     init {
         fetchApod()
-        fetchHistoryByDate(_historySelectedDate.value)
+        fetchHistoryByDate(_historySelectedDate.value, allowPreviousDayFallback = true)
         observeFavorites()
     }
 
@@ -248,28 +254,71 @@ class FeedViewModel(
                 translateRemainingExplanations(others)
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: HttpException) {
-                val errorMsg = when (e.code()) {
-                    403 -> "Chave de API inválida ou expirada."
-                    429 -> "Limite de requisições da NASA atingido (DEMO_KEY). Tente mais tarde."
-                    else -> "Erro na API da NASA: ${e.code()}"
-                }
-                Log.e("FeedViewModel", "Erro HTTP: $errorMsg", e)
-                _apodState.value = ApodState.Error(errorMsg)
-            } catch (e: SocketTimeoutException) {
-                Log.e("FeedViewModel", "Timeout na resposta da NASA", e)
-                _apodState.value = ApodState.Error("O servidor da NASA demorou muito para responder. Toque em tentar novamente.")
-            } catch (e: UnknownHostException) {
-                Log.e("FeedViewModel", "Sem conexão com o servidor", e)
-                _apodState.value = ApodState.Error("Sem conexão com a internet. Verifique seu Wi-Fi ou dados móveis.")
-            } catch (e: IOException) {
-                Log.e("FeedViewModel", "Erro de E/S ou rede", e)
-                _apodState.value = ApodState.Error("Falha na comunicação com a rede. Tente novamente.")
             } catch (e: Exception) {
-                Log.e("FeedViewModel", "Erro inesperado", e)
-                _apodState.value = ApodState.Error("Ocorreu um erro inesperado: ${e.message}")
+                val errorMsg = mapApodErrorMessage(e)
+                Log.e("FeedViewModel", "Erro no fetchApod: $errorMsg", e)
+                _apodState.value = ApodState.Error(errorMsg)
             }
         }
+    }
+
+    /**
+     * Atualização por gesto (Pull to Refresh): evita requisições simultâneas e mantém
+     * os cards já carregados visíveis durante a busca. Em caso de falha, notifica de forma discreta.
+     */
+    fun refreshApod() {
+        if (_isRefreshing.value || _apodState.value is ApodState.Loading) return
+        if (_apodState.value !is ApodState.Success) {
+            fetchApod()
+            return
+        }
+
+        fetchApodJob?.cancel()
+        fetchApodJob = viewModelScope.launch {
+            val filter = _feedFilter.value
+            _isRefreshing.value = true
+            try {
+                val originals = when (filter) {
+                    FeedFilter.LATEST -> apodRepository.fetchLatestApods(allowMockFallback = false)
+                    FeedFilter.RANDOM -> apodRepository.fetchRandomApods(allowMockFallback = false)
+                }
+
+                val visible = originals.take(FULLY_TRANSLATED_BEFORE_SHOWING)
+                    .map { apodRepository.translateApod(it) }
+                val others = coroutineScope {
+                    originals.drop(FULLY_TRANSLATED_BEFORE_SHOWING)
+                        .map { async { apodRepository.translateTitle(it) } }
+                        .awaitAll()
+                }
+
+                _apodState.value = ApodState.Success(visible + others)
+                _isRefreshing.value = false
+                translateRemainingExplanations(others)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("FeedViewModel", "Erro ao atualizar APOD via Pull to Refresh", e)
+                _userMessage.emit(mapApodErrorMessage(e, isRefresh = true))
+            } finally {
+                _isRefreshing.value = false
+            }
+        }
+    }
+
+    private fun mapApodErrorMessage(e: Exception, isRefresh: Boolean = false): String = when (e) {
+        is HttpException -> when (e.code()) {
+            403 -> "Chave de API inválida ou expirada."
+            429 -> "Limite de requisições da NASA atingido. Tente mais tarde."
+            else -> "Erro na API da NASA: ${e.code()}"
+        }
+        is SocketTimeoutException -> "O servidor da NASA demorou muito para responder."
+        is UnknownHostException -> "Sem conexão com a internet. Verifique sua rede."
+        is IOException -> if (isRefresh) {
+            "Não foi possível atualizar agora. Tente novamente."
+        } else {
+            "Falha na comunicação com a rede. Tente novamente."
+        }
+        else -> "Ocorreu um erro inesperado: ${e.message}"
     }
 
     /**
@@ -287,41 +336,78 @@ class FeedViewModel(
     }
 
     fun selectHistoryDate(dateString: String) {
-        _historySelectedDate.value = dateString
-        fetchHistoryByDate(dateString)
+        val maxDate = ApodRepository.latestApodDate()
+        val clampedDate = try {
+            val parsed = LocalDate.parse(dateString, DateTimeFormatter.ISO_LOCAL_DATE)
+            if (parsed.isAfter(maxDate)) maxDate else parsed
+        } catch (_: Exception) {
+            maxDate
+        }
+        val normalized = clampedDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
+        _historySelectedDate.value = normalized
+        fetchHistoryByDate(normalized)
     }
 
-    fun fetchHistoryByDate(dateString: String) {
-        viewModelScope.launch {
+    fun fetchHistoryByDate(
+        dateString: String,
+        allowPreviousDayFallback: Boolean = false
+    ) {
+        fetchHistoryJob?.cancel()
+        fetchHistoryJob = viewModelScope.launch {
             Log.d("FeedViewModel", "Iniciando fetchHistoryByDate para data: $dateString")
             _historyState.value = HistoryState.Loading
             try {
                 val response = apodRepository.getApodByDate(dateString)
                 Log.d("FeedViewModel", "Sucesso foto do dia $dateString: ${response.title}")
                 _historyState.value = HistoryState.Success(response)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: HttpException) {
-                val errorMsg = when (e.code()) {
-                    400 -> "Nenhuma foto publicada para a data selecionada ($dateString)."
-                    403 -> "Chave de API inválida ou expirada."
-                    429 -> "Limite de requisições da NASA atingido (DEMO_KEY). Tente mais tarde."
-                    else -> "Erro na API da NASA (${e.code()})"
+                if (allowPreviousDayFallback && (e.code() == 400 || e.code() == 404)) {
+                    val previousDate = try {
+                        LocalDate.parse(dateString, DateTimeFormatter.ISO_LOCAL_DATE).minusDays(1)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (previousDate != null && !previousDate.isBefore(MIN_APOD_DATE)) {
+                        val previousDateString = previousDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
+                        Log.w("FeedViewModel", "APOD ainda não publicado para $dateString; recuando para $previousDateString")
+                        _historySelectedDate.value = previousDateString
+                        try {
+                            val fallbackResponse = apodRepository.getApodByDate(previousDateString)
+                            _historyState.value = HistoryState.Success(fallbackResponse)
+                            return@launch
+                        } catch (fallbackException: CancellationException) {
+                            throw fallbackException
+                        } catch (fallbackException: Exception) {
+                            Log.e("FeedViewModel", "Falha no fallback para $previousDateString", fallbackException)
+                            _historyState.value = HistoryState.Error(mapHistoryErrorMessage(fallbackException, previousDateString))
+                            return@launch
+                        }
+                    }
                 }
+                val errorMsg = mapHistoryErrorMessage(e, dateString)
                 Log.e("FeedViewModel", "Erro HTTP ao buscar histórico: $errorMsg", e)
                 _historyState.value = HistoryState.Error(errorMsg)
-            } catch (e: SocketTimeoutException) {
-                Log.e("FeedViewModel", "Timeout ao buscar histórico", e)
-                _historyState.value = HistoryState.Error("O servidor da NASA demorou muito para responder. Toque em tentar novamente.")
-            } catch (e: UnknownHostException) {
-                Log.e("FeedViewModel", "Sem conexão com o servidor ao buscar histórico", e)
-                _historyState.value = HistoryState.Error("Sem conexão com a internet. Verifique seu Wi-Fi ou dados móveis.")
-            } catch (e: IOException) {
-                Log.e("FeedViewModel", "Erro de conexão ao buscar histórico", e)
-                _historyState.value = HistoryState.Error("Falha na comunicação com a rede. Tente novamente.")
             } catch (e: Exception) {
-                Log.e("FeedViewModel", "Erro inesperado ao buscar histórico", e)
-                _historyState.value = HistoryState.Error("Ocorreu um erro inesperado: ${e.message}")
+                val errorMsg = mapHistoryErrorMessage(e, dateString)
+                Log.e("FeedViewModel", "Erro ao buscar histórico: $errorMsg", e)
+                _historyState.value = HistoryState.Error(errorMsg)
             }
         }
+    }
+
+    private fun mapHistoryErrorMessage(e: Exception, dateString: String): String = when (e) {
+        is HttpException -> when (e.code()) {
+            400, 404 -> "Nenhuma foto publicada pela NASA para a data selecionada ($dateString)."
+            403 -> "Chave de API inválida ou expirada."
+            429 -> "Limite de requisições da NASA atingido (DEMO_KEY). Tente mais tarde."
+            else -> "Erro na API da NASA (${e.code()})"
+        }
+        is SocketTimeoutException -> "O servidor da NASA demorou muito para responder. Toque em tentar novamente."
+        is UnknownHostException -> "Sem conexão com a internet. Verifique seu Wi-Fi ou dados móveis."
+        is IOException -> "Falha na comunicação com a rede. Tente novamente."
+        else -> "Ocorreu um erro inesperado: ${e.message}"
     }
 
     enum class FeedFilter(val label: String) {
@@ -332,6 +418,7 @@ class FeedViewModel(
     private companion object {
         /** Fotos traduzidas por completo antes de o feed aparecer (as que cabem na primeira tela). */
         const val FULLY_TRANSLATED_BEFORE_SHOWING = 2
+        val MIN_APOD_DATE: LocalDate = LocalDate.of(1995, 6, 16)
     }
 
     sealed class ApodState {

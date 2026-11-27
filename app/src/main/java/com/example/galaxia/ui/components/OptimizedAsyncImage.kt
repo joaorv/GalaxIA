@@ -17,6 +17,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import com.example.galaxia.ui.theme.GalaxiaSurfaceElevated
 
 /**
  * Componente otimizado para carregamento de imagens em duas etapas:
@@ -38,7 +39,7 @@ fun OptimizedAsyncImage(
     val validHighRes = highResUrl?.takeIf { it.isNotBlank() && it != validLowRes }
 
     if (validLowRes == null && validHighRes == null) {
-        Box(modifier = modifier.background(Color(0xFF161822)))
+        Box(modifier = modifier.background(GalaxiaSurfaceElevated))
         return
     }
 
@@ -55,7 +56,7 @@ fun OptimizedAsyncImage(
         val imageModifier = if (imageState !is AsyncImagePainter.State.Success) {
             modifier.shimmerEffect()
         } else {
-            modifier.background(Color(0xFF161822))
+            modifier.background(GalaxiaSurfaceElevated)
         }
         Image(
             painter = painter,
@@ -76,7 +77,7 @@ fun OptimizedAsyncImage(
         val imageModifier = if (imageState !is AsyncImagePainter.State.Success) {
             modifier.shimmerEffect()
         } else {
-            modifier.background(Color(0xFF161822))
+            modifier.background(GalaxiaSurfaceElevated)
         }
         Image(
             painter = painter,
@@ -128,7 +129,7 @@ fun OptimizedAsyncImage(
         val imageModifier = if (!isAnySuccess) {
             modifier.shimmerEffect()
         } else {
-            modifier.background(Color(0xFF161822))
+            modifier.background(GalaxiaSurfaceElevated)
         }
 
         Image(

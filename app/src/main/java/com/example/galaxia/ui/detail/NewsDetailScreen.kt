@@ -36,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.galaxia.ui.components.OptimizedAsyncImage
+import com.example.galaxia.ui.components.ScrollToTopButton
 import com.example.galaxia.ui.components.VideoMediaCard
 import com.example.galaxia.data.local.FavoriteEntity
 import com.example.galaxia.data.local.allImageUrls
@@ -60,8 +62,12 @@ import kotlinx.coroutines.CancellationException
 import com.example.galaxia.ui.theme.GalaxiaBackground
 import com.example.galaxia.ui.theme.GalaxiaCyan
 import com.example.galaxia.ui.theme.GalaxiaGray
+import com.example.galaxia.ui.theme.GalaxiaSurfaceElevated
 import com.example.galaxia.ui.theme.GalaxiaWhite
+import com.example.galaxia.ui.theme.LocalUiMetrics
+import com.example.galaxia.ui.theme.responsiveContentWidth
 import com.example.galaxia.ui.util.formatDateBr
+import kotlinx.coroutines.launch
 
 /**
  * Tela de detalhe de uma notícia/foto, com o conteúdo completo e seta para voltar.
@@ -78,6 +84,9 @@ fun NewsDetailScreen(
     initialImageIndex: Int = 0
 ) {
     val uriHandler = LocalUriHandler.current
+    val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+    val metrics = LocalUiMetrics.current
 
     // Surface bloqueia toques para a tela que fica por baixo
     Surface(
@@ -90,7 +99,7 @@ fun NewsDetailScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBack) {
@@ -137,12 +146,19 @@ fun NewsDetailScreen(
                 }
             }
 
-            // Conteúdo completo
-            Column(
+            // Conteúdo completo com botão discreto de retorno ao topo
+            Box(
                 modifier = Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.TopCenter
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .responsiveContentWidth(metrics.maxContentWidth)
+                        .verticalScroll(scrollState)
+                ) {
                 // Imagem, Galeria em Carrossel, Vídeo ou Placeholder (artigos sem imagem não exibem placeholder preto)
                 val isVideoContent = item.mediaType == "video" || item.mediaType == "iframe" || item.mediaType == "embed"
                 val galleryImages = item.allImageUrls
@@ -186,7 +202,7 @@ fun NewsDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(280.dp)
-                            .background(Color(0xFF161822))
+                            .background(GalaxiaSurfaceElevated)
                     ) {
                         HorizontalPager(
                             state = pagerState,
@@ -198,7 +214,7 @@ fun NewsDetailScreen(
                                 contentDescription = "${item.title} (${page + 1} de ${galleryImages.size})",
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(Color(0xFF161822)),
+                                    .background(GalaxiaSurfaceElevated),
                                 contentScale = ContentScale.Fit
                             )
                         }
@@ -213,7 +229,7 @@ fun NewsDetailScreen(
                         ) {
                             Text(
                                 text = "${pagerState.currentPage + 1} / ${galleryImages.size}",
-                                color = GalaxiaWhite,
+                                color = Color.White,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -236,7 +252,7 @@ fun NewsDetailScreen(
                                         .size(if (isCurrent) 7.dp else 5.dp)
                                         .clip(CircleShape)
                                         .background(
-                                            if (isCurrent) GalaxiaCyan else GalaxiaWhite.copy(alpha = 0.5f)
+                                            if (isCurrent) GalaxiaCyan else Color.White.copy(alpha = 0.55f)
                                         )
                                 )
                             }
@@ -250,7 +266,7 @@ fun NewsDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(min = 220.dp)
-                            .background(Color(0xFF161822)),
+                            .background(GalaxiaSurfaceElevated),
                         contentScale = ContentScale.FillWidth
                     )
                 } else if (item.mediaType != "article") {
@@ -263,14 +279,14 @@ fun NewsDetailScreen(
                     ) {
                         Text(
                             text = item.title,
-                            color = GalaxiaWhite,
+                            color = Color.White,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(horizontal = 20.dp)
                         )
                     }
                 }
 
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.padding(metrics.horizontalPadding)) {
                     // Data
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
@@ -328,6 +344,17 @@ fun NewsDetailScreen(
                         lineHeight = 25.sp
                     )
                 }
+            }
+
+            ScrollToTopButton(
+                visible = scrollState.value > 600,
+                onClick = {
+                    coroutineScope.launch { scrollState.animateScrollTo(0) }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 16.dp)
+            )
             }
         }
     }

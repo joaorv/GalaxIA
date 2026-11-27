@@ -37,15 +37,17 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.example.galaxia.ui.theme.GalaxiaCardBackground
+import com.example.galaxia.ui.theme.LocalGalaxiaColors
+import com.example.galaxia.ui.theme.LocalUiMetrics
 
 /**
  * Modificador customizado que aplica um efeito Shimmer (brilho deslizante) contínuo e suave,
- * respeitando as cores e a identidade visual escura do app GalaxIA.
+ * respeitando as cores do tema ativo do app GalaxIA.
  */
 @Composable
 fun Modifier.shimmerEffect(
-    baseColor: Color = Color(0xFF161926),
-    highlightColor: Color = Color(0xFF282D44),
+    baseColor: Color = LocalGalaxiaColors.current.shimmerBase,
+    highlightColor: Color = LocalGalaxiaColors.current.shimmerHighlight,
     shape: Shape = RoundedCornerShape(8.dp)
 ): Modifier {
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -119,21 +121,27 @@ fun SkeletonTextLine(
 fun FeedCardSkeleton(
     modifier: Modifier = Modifier
 ) {
+    val metrics = LocalUiMetrics.current
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
     ) {
-        // Placeholder da Imagem principal (230dp)
         SkeletonBox(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(230.dp),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+                .height(metrics.cardMediaHeight),
+            shape = RoundedCornerShape(
+                topStart = metrics.cardCornerRadius,
+                topEnd = metrics.cardCornerRadius,
+                bottomStart = 0.dp,
+                bottomEnd = 0.dp
+            )
         )
 
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(metrics.cardContentPadding)) {
             // Data do Item
             Row(verticalAlignment = Alignment.CenterVertically) {
                 SkeletonBox(
@@ -201,11 +209,13 @@ fun FeedSkeletonList(
     modifier: Modifier = Modifier,
     count: Int = 3
 ) {
+    val metrics = LocalUiMetrics.current
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = metrics.horizontalPadding, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(metrics.cardSpacing)
     ) {
         repeat(count) {
             FeedCardSkeleton()
@@ -220,21 +230,27 @@ fun FeedSkeletonList(
 fun HistoryCardSkeleton(
     modifier: Modifier = Modifier
 ) {
+    val metrics = LocalUiMetrics.current
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
     ) {
-        // Imagem principal (260dp)
         SkeletonBox(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(260.dp),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+                .height(metrics.historyMediaHeight),
+            shape = RoundedCornerShape(
+                topStart = metrics.cardCornerRadius,
+                topEnd = metrics.cardCornerRadius,
+                bottomStart = 0.dp,
+                bottomEnd = 0.dp
+            )
         )
 
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(metrics.cardContentPadding)) {
             // Título
             SkeletonTextLine(height = 22.dp, widthFraction = 0.8f)
             Spacer(modifier = Modifier.height(6.dp))
@@ -290,17 +306,18 @@ fun HistoryCardSkeleton(
 fun SearchResultCardSkeleton(
     modifier: Modifier = Modifier
 ) {
+    val metrics = LocalUiMetrics.current
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Thumbnail da Imagem (88x88)
         SkeletonBox(
-            modifier = Modifier.size(88.dp),
+            modifier = Modifier.size(metrics.searchThumbSize),
             shape = RoundedCornerShape(12.dp)
         )
 
@@ -346,21 +363,27 @@ fun SearchResultSkeletonList(
 fun FavoriteCardSkeleton(
     modifier: Modifier = Modifier
 ) {
+    val metrics = LocalUiMetrics.current
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
     ) {
-        // Imagem principal (230dp)
         SkeletonBox(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(230.dp),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+                .height(metrics.cardMediaHeight),
+            shape = RoundedCornerShape(
+                topStart = metrics.cardCornerRadius,
+                topEnd = metrics.cardCornerRadius,
+                bottomStart = 0.dp,
+                bottomEnd = 0.dp
+            )
         )
 
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(metrics.cardContentPadding)) {
             // Linha com Tag do tipo (FOTO DO DIA / NOTICIA) e Data
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -406,11 +429,13 @@ fun FavoriteSkeletonList(
     modifier: Modifier = Modifier,
     count: Int = 3
 ) {
+    val metrics = LocalUiMetrics.current
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = metrics.horizontalPadding, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(metrics.cardSpacing)
     ) {
         repeat(count) {
             FavoriteCardSkeleton()
@@ -425,20 +450,27 @@ fun FavoriteSkeletonList(
 fun SpaceNewsCardSkeleton(
     modifier: Modifier = Modifier
 ) {
+    val metrics = LocalUiMetrics.current
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
+            .clip(RoundedCornerShape(metrics.cardCornerRadius))
             .background(GalaxiaCardBackground)
     ) {
         SkeletonBox(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(210.dp),
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+                .height(metrics.cardMediaHeight),
+            shape = RoundedCornerShape(
+                topStart = metrics.cardCornerRadius,
+                topEnd = metrics.cardCornerRadius,
+                bottomStart = 0.dp,
+                bottomEnd = 0.dp
+            )
         )
 
-        Column(modifier = Modifier.padding(20.dp)) {
+        Column(modifier = Modifier.padding(metrics.cardContentPadding)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -484,11 +516,13 @@ fun SpaceNewsSkeletonList(
     modifier: Modifier = Modifier,
     count: Int = 3
 ) {
+    val metrics = LocalUiMetrics.current
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(horizontal = metrics.horizontalPadding, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(metrics.cardSpacing)
     ) {
         repeat(count) {
             SpaceNewsCardSkeleton()

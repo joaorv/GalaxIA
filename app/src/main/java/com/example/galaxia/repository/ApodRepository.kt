@@ -15,7 +15,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import java.io.IOException
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import retrofit2.HttpException
 import java.util.Locale
@@ -49,12 +51,16 @@ class ApodRepository(
      * do carregamento, então o feed busca primeiro e traduz depois, na ordem em que os
      * itens aparecem na tela (veja [translateApod] e [translateTitle]).
      */
-    suspend fun fetchLatestApods(count: Int = 10): List<ApodResponse> {
+    suspend fun fetchLatestApods(
+        count: Int = 10,
+        allowMockFallback: Boolean = true
+    ): List<ApodResponse> {
         return try {
             apiService.getApodList(perPage = count)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            if (!allowMockFallback) throw e
             // Em caso de limitação da API da NASA ou erro de conexão,
             // retorna dados de contingência para que o app continue funcionando normalmente.
             ApodMockData.sampleApods
@@ -71,7 +77,10 @@ class ApodRepository(
     }
 
     /** Mesmo sorteio de [getRandomApods], sem traduzir. */
-    suspend fun fetchRandomApods(count: Int = 10): List<ApodResponse> = coroutineScope {
+    suspend fun fetchRandomApods(
+        count: Int = 10,
+        allowMockFallback: Boolean = true
+    ): List<ApodResponse> = coroutineScope {
         try {
             val total = totalApods ?: fetchTotalApods().also { totalApods = it }
             val pages = generateSequence { Random.nextInt(1, total + 1) }
@@ -79,7 +88,7 @@ class ApodRepository(
                 .take(minOf(count, total))
                 .toList()
 
-            pages.map { page ->
+            val items = pages.map { page ->
                 async {
                     // Uma página que falhar não derruba as demais
                     try {
@@ -92,11 +101,18 @@ class ApodRepository(
                 }
             }.awaitAll()
                 .filterNotNull()
-                .ifEmpty { ApodMockData.sampleApods.shuffled() }
+
+            if (items.isNotEmpty()) {
+                items
+            } else if (allowMockFallback) {
+                ApodMockData.sampleApods.shuffled()
+            } else {
+                throw IOException("Não foi possível atualizar as fotos no momento.")
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ApodMockData.sampleApods.shuffled()
+            if (allowMockFallback) ApodMockData.sampleApods.shuffled() else throw e
         }
     }
 
@@ -107,13 +123,9 @@ class ApodRepository(
     }
 
     suspend fun getApodByDate(date: String): ApodResponse {
-        return try {
-            val dateCode = formatDateToCode(date)
-            val original = apiService.getApodByDate(dateCode = dateCode)
-            translateApod(original)
-        } catch (e: Exception) {
-            ApodMockData.getMockByDate(date)
-        }
+        val dateCode = formatDateToCode(date)
+        val original = apiService.getApodByDate(dateCode = dateCode)
+        return translateApod(original)
     }
 
     // --- Pesquisa ---
@@ -292,8 +304,19 @@ class ApodRepository(
     companion object {
         const val SEARCH_PAGE_SIZE = 10
 
+        private val NASA_APOD_ZONE: ZoneId = ZoneId.of("America/New_York")
         private val SEARCH_TITLE_REGEX = Regex("""^APOD:\s*(\d{4}\s+[A-Za-z]+\s+\d{1,2})\s*[–—-]\s*(.+)$""")
         private val SEARCH_TITLE_DATE_FORMAT: DateTimeFormatter =
             DateTimeFormatter.ofPattern("yyyy MMMM d", Locale.ENGLISH)
+
+        /**
+         * Data mais recente elegível para o NASA APOD: limita pela menor data entre o fuso local
+         * do dispositivo e o fuso oficial de publicação da NASA (America/New_York), evitando datas
+         * futuras (ex.: emuladores em UTC) ou ainda não publicadas.
+         */
+        fun latestApodDate(
+            localToday: LocalDate = LocalDate.now(),
+            nasaToday: LocalDate = LocalDate.now(NASA_APOD_ZONE)
+        ): LocalDate = minOf(localToday, nasaToday)
     }
 }

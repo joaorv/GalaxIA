@@ -66,16 +66,19 @@ class GlobalSearchRepository(
     suspend fun search(
         query: String,
         page: Int = 1,
-        searchTerm: String? = null
+        searchTerm: String? = null,
+        forceRefresh: Boolean = false
     ): GlobalSearchPage {
         val trimmedQuery = query.trim()
         val cacheKey = "${trimmedQuery.lowercase()}:$page"
         val now = System.currentTimeMillis()
 
-        queryCacheMutex.withLock {
-            val cached = queryCache[cacheKey]
-            if (cached != null && now - cached.cachedAtMillis <= QUERY_CACHE_TTL_MS) {
-                return cached.page
+        if (!forceRefresh) {
+            queryCacheMutex.withLock {
+                val cached = queryCache[cacheKey]
+                if (cached != null && now - cached.cachedAtMillis <= QUERY_CACHE_TTL_MS) {
+                    return cached.page
+                }
             }
         }
 
@@ -109,12 +112,12 @@ class GlobalSearchRepository(
                 runCatchingApi { fetchApodMatches(trimmedQuery, englishTerm) }
             }
             val donkiDeferred = if (querySpaceWeather) {
-                async { runCatchingApi { fetchDonkiMatches(normalizedPt, normalizedEn) } }
+                async { runCatchingApi { fetchDonkiMatches(normalizedPt, normalizedEn, forceRefresh) } }
             } else {
                 null
             }
             val eonetDeferred = if (queryNaturalEvent) {
-                async { runCatchingApi { fetchEonetMatches(normalizedPt, normalizedEn) } }
+                async { runCatchingApi { fetchEonetMatches(normalizedPt, normalizedEn, forceRefresh) } }
             } else {
                 null
             }
@@ -342,8 +345,12 @@ class GlobalSearchRepository(
             }
     }
 
-    private suspend fun fetchDonkiMatches(normalizedPt: String, normalizedEn: String): List<GlobalSearchItem> {
-        val pool = getCachedDonkiItems()
+    private suspend fun fetchDonkiMatches(
+        normalizedPt: String,
+        normalizedEn: String,
+        forceRefresh: Boolean = false
+    ): List<GlobalSearchItem> {
+        val pool = getCachedDonkiItems(forceRefresh)
         if (pool.isEmpty()) return emptyList()
 
         val tokens = extractSearchTokens(normalizedPt, normalizedEn)
@@ -361,12 +368,14 @@ class GlobalSearchRepository(
         }
     }
 
-    private suspend fun getCachedDonkiItems(): List<GlobalSearchItem> {
+    private suspend fun getCachedDonkiItems(forceRefresh: Boolean = false): List<GlobalSearchItem> {
         val now = System.currentTimeMillis()
-        donkiCacheMutex.withLock {
-            val cached = donkiCache
-            if (cached != null && now - cached.cachedAtMillis <= SUPPLEMENTAL_CACHE_TTL_MS) {
-                return cached.items
+        if (!forceRefresh) {
+            donkiCacheMutex.withLock {
+                val cached = donkiCache
+                if (cached != null && now - cached.cachedAtMillis <= SUPPLEMENTAL_CACHE_TTL_MS) {
+                    return cached.items
+                }
             }
         }
 
@@ -465,8 +474,12 @@ class GlobalSearchRepository(
         return finalized
     }
 
-    private suspend fun fetchEonetMatches(normalizedPt: String, normalizedEn: String): List<GlobalSearchItem> {
-        val pool = getCachedEonetItems()
+    private suspend fun fetchEonetMatches(
+        normalizedPt: String,
+        normalizedEn: String,
+        forceRefresh: Boolean = false
+    ): List<GlobalSearchItem> {
+        val pool = getCachedEonetItems(forceRefresh)
         if (pool.isEmpty()) return emptyList()
 
         val tokens = extractSearchTokens(normalizedPt, normalizedEn)
@@ -485,12 +498,14 @@ class GlobalSearchRepository(
         }
     }
 
-    private suspend fun getCachedEonetItems(): List<GlobalSearchItem> {
+    private suspend fun getCachedEonetItems(forceRefresh: Boolean = false): List<GlobalSearchItem> {
         val now = System.currentTimeMillis()
-        eonetCacheMutex.withLock {
-            val cached = eonetCache
-            if (cached != null && now - cached.cachedAtMillis <= SUPPLEMENTAL_CACHE_TTL_MS) {
-                return cached.items
+        if (!forceRefresh) {
+            eonetCacheMutex.withLock {
+                val cached = eonetCache
+                if (cached != null && now - cached.cachedAtMillis <= SUPPLEMENTAL_CACHE_TTL_MS) {
+                    return cached.items
+                }
             }
         }
 

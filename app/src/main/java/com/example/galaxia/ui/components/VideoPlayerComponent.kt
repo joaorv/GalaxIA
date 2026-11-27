@@ -12,6 +12,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -275,7 +277,11 @@ fun VideoMediaCard(
                     lineHeight = 18.sp
                 )
                 Spacer(modifier = Modifier.height(14.dp))
-                Row {
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Button(
                         onClick = {
                             try {
@@ -300,7 +306,6 @@ fun VideoMediaCard(
                     }
 
                     if (ytId != null) {
-                        Spacer(modifier = Modifier.width(8.dp))
                         Button(
                             onClick = {
                                 try {
@@ -312,8 +317,6 @@ fun VideoMediaCard(
                             Text("Abrir no YouTube", color = GalaxiaWhite, fontSize = 12.sp)
                         }
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
 
                     Button(
                         onClick = { isPlaying = false },
